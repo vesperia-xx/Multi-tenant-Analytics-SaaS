@@ -4,7 +4,7 @@
 
 Vortex Metrics gives every organization its own workspace, its own data and its own permissions. Dashboards, tables and exports are powered by real SQL aggregates over a seeded PostgreSQL dataset — no mocks at runtime, no client-side math.
 
-> **Status:** Phase 1 of 10 — foundation (architecture, database, design system, marketing shell).
+> **Status:** Phase 2 of 10 — authentication (register, login, logout, password reset, sessions).
 > See the [roadmap](#roadmap) for what ships next.
 
 ---
@@ -45,7 +45,7 @@ Browser
   │  /app/[orgSlug]/...        orgSlug is the only tenant identifier the client sends
   ▼
 Next.js server
-  ├─ Session guard (hashed token → user, sliding 30-day expiry)
+  ├─ Session guard (hashed token → user, 30-day expiry)
   ├─ Membership guard (orgSlug + session → role, 404 if not a member)
   ├─ Permission matrix (Owner / Admin / Manager / Viewer)
   ├─ Zod validation + Postgres-backed rate limits
@@ -72,7 +72,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the ERD, RBAC matrix and 
 | Phase | Scope | Status |
 | --- | --- | --- |
 | 1 | Setup, architecture, database schema, design system, marketing shell | ✅ |
-| 2 | Authentication: register, login, logout, password reset, sessions | ⏳ |
+| 2 | Authentication: register, login, logout, password reset, sessions | ✅ |
 | 3 | Organizations, memberships, invitations, org switcher, RBAC guards | ⏳ |
 | 4 | Dashboard KPIs and analytics charts from real SQL | ⏳ |
 | 5 | Orders, customers and products tables (search, filters, sorting, pagination) | ⏳ |
@@ -131,7 +131,8 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-> Seed data arrives in Phase 8 with the demo tenants. Until then the database is intentionally empty.
+> Seed data arrives in Phase 8 with the demo tenants. Until then, creating an account also
+> creates a workspace you own, which is enough to exercise the auth flows.
 
 ## Scripts
 
@@ -160,20 +161,58 @@ scripts/
   db-check.ts             Connectivity + index smoke test
 src/
   app/
+    (auth)/               login, register, forgot-password, reset-password
+    app/                  authenticated account area (workspaces, sessions)
     page.tsx              Marketing landing page
     layout.tsx            Root layout, theme provider, toasts
     globals.css           Design tokens (oklch) + utilities
   components/
+    app/                  Account overview and skeleton
+    auth/                 Auth shell, forms, feedback
     brand/                Logo
     layout/               Marketing header, mobile nav, footer
-    marketing/            Dashboard preview
+    marketing/            Printed report specimen
     theme/                Theme provider and toggle
-    ui/                   Button, Card, Badge, Toaster
-  lib/                    Utilities, site config, env validation
+    ui/                   Button, Card, Badge, Input, Field, Toaster
+  lib/                    Utilities, site config, env validation, Zod schemas
   server/
+    auth/                 Password hashing, sessions, rate limits, Server Actions
     db/client.ts          Prisma client with pg / Neon adapters
+    email/                Resend delivery (optional)
+    org/                  Workspace slugs
+  proxy.ts                Optimistic cookie check for /app/*
   generated/prisma/       Generated Prisma client (gitignored)
 ```
+
+## Authentication and sessions
+
+Custom, opaque, database-backed sessions — no Auth.js and no JWT. A JWT cannot be revoked
+server-side, and revocation is the point.
+
+| Concern | Implementation |
+| --- | --- |
+| Cookie | `vortex_session`, `httpOnly`, `sameSite=lax`, `secure` in production, 30-day absolute expiry |
+| Token | 32 random bytes (base64url) held only by the browser; the database stores its SHA-256 digest |
+| Lookup | One indexed query on `sessions.token_hash`; `last_used_at` is refreshed at most once an hour |
+| Revocation | Per session (`revoked_at`), plus "sign out other devices"; a password reset revokes every session |
+| Passwords | `scrypt` (N=16384, r=8, p=1, 64-byte key) with a per-password salt and `timingSafeEqual` |
+| Enumeration | Unknown emails and wrong passwords answer identically and cost the same work (a dummy hash is verified) |
+| Rate limits | Postgres fixed windows shared across serverless instances |
+| Reset links | 32 random bytes, hashed at rest, single use, 60-minute expiry; a new link invalidates the previous one |
+| Routing guard | `src/proxy.ts` only checks that the cookie exists; the real check is `requireViewer` in the data access layer |
+
+Registration is open: creating an account creates the user, a workspace and an `OWNER`
+membership in one transaction, with two audit entries (`organization.created`, `member.joined`).
+The workspace slug is derived from the name and reserved words (`app`, `login`, `api`, …) are skipped.
+
+### Password reset without an email provider
+
+`RESEND_API_KEY` and `EMAIL_FROM` are optional. Without them:
+
+- the reset link is printed to the server log in development;
+- in demo mode it is also returned to the UI **for seeded demo accounts only** (`users.is_demo`),
+  never for a visitor's own account;
+- the response to "forgot password" is always the same, so it never confirms whether an email exists.
 
 ## Multi-tenancy and roles
 

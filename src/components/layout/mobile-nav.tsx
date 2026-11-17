@@ -1,6 +1,7 @@
 "use client";
 
 import { Menu, X } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 
 import { marketingNav } from "@/lib/site";
@@ -41,13 +42,20 @@ export function MobileNav() {
                 {item.label}
               </a>
             ))}
-            <a
-              href="#demo"
+            <Link
+              href="/login"
               onClick={() => setOpen(false)}
-              className={buttonVariants({ className: "mt-5" })}
+              className={buttonVariants({ variant: "outline", className: "mt-5" })}
             >
-              Open the demo
-            </a>
+              Sign in
+            </Link>
+            <Link
+              href="/register"
+              onClick={() => setOpen(false)}
+              className={buttonVariants({ className: "mt-2" })}
+            >
+              Create a workspace
+            </Link>
           </nav>
         </div>
       ) : null}

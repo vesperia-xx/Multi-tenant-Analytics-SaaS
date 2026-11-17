@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { Logo } from "@/components/brand/logo";
 import { Badge } from "@/components/ui/badge";
 
@@ -14,10 +16,10 @@ const columns = [
   {
     title: "Project",
     links: [
-      { label: "Live demo", href: "#demo" },
+      { label: "Sign in", href: "/login" },
+      { label: "Create a workspace", href: "/register" },
       { label: "Security model", href: "#architecture" },
       { label: "Roles & audit", href: "#access" },
-      { label: "Stack", href: "#stack" },
     ],
   },
 ] as const;
@@ -33,7 +35,7 @@ export function SiteFooter() {
               Multi-tenant analytics with isolation enforced at the application layer and in
               PostgreSQL itself.
             </p>
-            <Badge variant="outline">Phase 1 · Foundation</Badge>
+            <Badge variant="outline">Phase 2 · Authentication</Badge>
           </div>
 
           {columns.map((column) => (
@@ -44,9 +46,9 @@ export function SiteFooter() {
               <ul className="flex flex-col gap-2">
                 {column.links.map((link) => (
                   <li key={link.label}>
-                    <a href={link.href} className="link-underline text-sm text-foreground/80">
+                    <Link href={link.href} className="link-underline text-sm text-foreground/80">
                       {link.label}
-                    </a>
+                    </Link>
                   </li>
                 ))}
               </ul>

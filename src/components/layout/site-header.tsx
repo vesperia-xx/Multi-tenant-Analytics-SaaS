@@ -28,10 +28,16 @@ export function SiteHeader() {
 
         <div className="flex items-center gap-2">
           <ThemeToggle />
+          <Link
+            href="/login"
+            className="hidden text-[0.8125rem] font-medium text-muted-foreground transition-colors hover:text-foreground sm:block"
+          >
+            Sign in
+          </Link>
           <span className="hidden sm:block">
-            <a href="#demo" className={buttonVariants({ size: "sm" })}>
-              Open the demo
-            </a>
+            <Link href="/register" className={buttonVariants({ size: "sm" })}>
+              Start free
+            </Link>
           </span>
           <MobileNav />
         </div>

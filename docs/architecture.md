@@ -279,9 +279,9 @@ Neon) saltaría las políticas.
 ### 4.3 Respuestas ante fallos
 
 - Recurso de otro tenant: **404** (no revela existencia).
-- Sesión inválida: **401** + redirect a login.
+- Sesión inválida o ausente: redirección a `/login?next=…`; las rutas de datos responderán **401**.
 - Rol insuficiente dentro del propio tenant: **403**.
-- Validación: **422** con errores por campo.
+- Validación: errores por campo devueltos al formulario (Zod), sin recargar la página.
 
 ---
 
@@ -361,18 +361,36 @@ contra el dataset sembrado.
 
 ## 7. Autenticación y sesiones
 
-- **Tokens opacos**, no JWT: 32 bytes aleatorios; en la base solo se guarda su SHA-256.
-- Cookie `httpOnly`, `secure` en producción, `sameSite=lax`, `path=/`.
-- Expiración deslizante de 30 días: se extiende al usarse, con un umbral para no escribir en
-  cada request.
-- Logout revoca (`revoked_at`) y borra la cookie.
-- El listado de sesiones permite cerrar sesiones individuales o todas.
-- Reset de contraseña: token de un solo uso, con hash, expiración corta y revocación de
-  sesiones tras el cambio.
-- Contraseñas con `scrypt`/`argon2` (a definir en la Fase 2) y comparación en tiempo constante.
+- **Tokens opacos**, no JWT: 32 bytes aleatorios; en la base solo se guarda su SHA-256. Un dump de
+  la base no se puede reproducir como cookie.
+- Cookie `vortex_session`, `httpOnly`, `secure` en producción, `sameSite=lax`, `path=/`, prioridad
+  alta. El valor nunca se registra en logs.
+- Expiración **absoluta** de 30 días. `last_used_at` se actualiza como máximo una vez por hora para
+  no escribir en cada request. No hay expiración deslizante porque la cookie solo puede
+  reescribirse en Server Actions o Route Handlers, no durante el render.
+- Logout revoca (`revoked_at`) y borra la cookie. `getViewer()` se memoiza por request con
+  `cache()` de React; el proxy solo comprueba la **presencia** de la cookie y la validación real
+  ocurre en la capa de acceso a datos.
+- El listado de sesiones permite revocar una sesión concreta o todas las demás.
+- Reset de contraseña: token de un solo uso, con hash, expiración de 60 minutos, invalidación de
+  los enlaces anteriores y revocación de **todas** las sesiones tras el cambio.
+- Contraseñas con **scrypt** (`N=16384, r=8, p=1`, clave de 64 bytes, `maxmem` acotado y
+  comparación con `timingSafeEqual`). El formato `scrypt$1$N$r$p$salt$key` lleva la versión y los
+  costes, así que subir el coste o migrar a Argon2id puede hacerse rehasheando en el siguiente
+  login sin invalidar contraseñas. No se usa `argon2` nativo para evitar binarios por plataforma.
+- Enumeración de usuarios: un email inexistente verifica un hash ficticio, de modo que el tiempo
+  de respuesta y el mensaje son idénticos a los de una contraseña incorrecta.
+- Registro abierto: en una sola transacción se crea el usuario, la organización y la membresía
+  `OWNER`, con dos entradas de auditoría (`organization.created`, `member.joined`). El slug se
+  deriva del nombre y se saltan palabras reservadas (`app`, `login`, `api`, …).
 
 Rate limiting: contadores de ventana fija en `rate_limit_counters`, porque en Vercel las
-instancias no comparten memoria. Aplica a login, registro, reset, invitaciones y exports.
+instancias no comparten memoria. Valores actuales: login 5/15 min por cuenta y 20/15 min por IP;
+registro 5/hora por IP; solicitud de reset 3/hora por cuenta y 10/hora por IP.
+
+Sin proveedor de email, el enlace de reset se imprime en el log en desarrollo y, en modo demo,
+se devuelve a la UI **solo para cuentas `is_demo`**. La respuesta a "he olvidado mi contraseña"
+es siempre la misma exista o no la cuenta.
 
 ---
 
@@ -403,6 +421,8 @@ revalidarse tras una mutación.
 | RLS con `FORCE` | Solo filtros de aplicación | Defensa en profundidad: un `WHERE` olvidado no se convierte en fuga |
 | Centavos enteros | `Decimal` / `Float` | Sin ambigüedad de redondeo y comparaciones exactas |
 | Contadores en Postgres | Redis / memoria | Funciona en serverless sin infraestructura extra |
+| `scrypt` nativo | Argon2id (`@node-rs/argon2`) | Cero dependencias nativas; formato versionado permite migrar rehasheando |
+| Expiración absoluta de sesión | Expiración deslizante | La cookie solo se reescribe en acciones/handlers; mantener el modelo explícito
 | PDF con `@react-pdf/renderer` | Puppeteer / HTML print | Runtime Node sin binarios de navegador, apto para Vercel |
 | Sin microfrontends | Varias apps | Un solo dominio, un solo deploy, un solo modelo de sesión |
 
@@ -413,7 +433,7 @@ revalidarse tras una mutación.
 | Fase | Contenido | Estado |
 | --- | --- | --- |
 | 1 | Scaffold, esquema, migración, sistema de diseño, landing | ✅ |
-| 2 | Sesiones, registro, login, reset, rutas protegidas | ⏳ |
+| 2 | Sesiones, registro, login, reset, rutas protegidas | ✅ |
 | 3 | Organizaciones, invitaciones, selector, guards RBAC | ⏳ |
 | 4 | KPIs y gráficos desde SQL real | ⏳ |
 | 5 | Tablas de pedidos, clientes y productos | ⏳ |

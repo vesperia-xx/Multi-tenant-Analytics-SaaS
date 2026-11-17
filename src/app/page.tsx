@@ -1,4 +1,5 @@
 import { ArrowRight, Check } from "lucide-react";
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { SiteFooter } from "@/components/layout/site-footer";
@@ -10,7 +11,7 @@ import { cn } from "@/lib/utils";
 const heroMeta = [
   { label: "Engine", value: "PostgreSQL 16" },
   { label: "Isolation", value: "RLS with FORCE" },
-  { label: "Tenants", value: "Acme & Nordwind" },
+  { label: "Sessions", value: "Opaque, DB-backed" },
 ];
 
 const indexFacts = [
@@ -512,28 +513,28 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Demo CTA */}
-        <section id="demo" className="bg-foreground py-16 text-background sm:py-24">
+        {/* Start CTA */}
+        <section id="start" className="bg-foreground py-16 text-background sm:py-24">
           <div className="mx-auto grid w-full max-w-7xl gap-10 px-5 sm:px-8 lg:grid-cols-[1fr_auto] lg:items-end">
             <div>
               <p className="font-mono text-[0.5625rem] uppercase tracking-[0.22em] text-background/55">
-                Milestone 01 / Foundation
+                Milestone 02 / Access
               </p>
               <h2 className="mt-4 max-w-2xl font-serif text-[2.4rem] leading-[1.05] tracking-tight sm:text-[3.5rem]">
-                A demo you can audit, not just scroll.
+                An account you can audit, not just a login box.
               </h2>
               <p className="mt-5 max-w-xl text-sm leading-relaxed text-background/70">
-                The live workspace is seeded with Acme Inc and Nordwind Studio: two tenants,
-                distinct data, and a single account that belongs to both. Switch organizations,
-                then try to reach the other one.
+                Create a workspace and you become its Owner. Sessions are opaque and revocable,
+                reset links work once, and every workspace you belong to is listed with the role
+                you hold in it.
               </p>
 
               <ul className="mt-7 flex flex-wrap gap-x-6 gap-y-2 font-mono text-[0.5625rem] uppercase tracking-[0.14em] text-background/60">
                 {[
-                  "Acme + Nordwind tenants",
+                  "Opaque sessions",
+                  "One-time reset links",
                   "Owner / Admin / Manager / Viewer",
-                  "CSV + PDF exports",
-                  "Audit diffs",
+                  "Audit entries from day one",
                 ].map((item) => (
                   <li key={item} className="flex items-center gap-1.5">
                     <span className="inline-block size-1 bg-background/70" />
@@ -544,19 +545,22 @@ export default function HomePage() {
             </div>
 
             <div className="flex flex-col items-start gap-3">
-              <a
-                href="#architecture"
+              <Link
+                href="/register"
                 className={cn(
                   buttonVariants({ variant: "secondary", size: "lg" }),
                   "bg-background text-foreground hover:bg-background/85",
                 )}
               >
-                Read the security model
+                Create a workspace
                 <ArrowRight className="size-4" />
-              </a>
-              <span className="font-mono text-[0.5rem] uppercase tracking-[0.14em] text-background/50">
-                Live demo ships with authentication
-              </span>
+              </Link>
+              <Link
+                href="/login"
+                className="font-mono text-[0.5625rem] uppercase tracking-[0.14em] text-background/60 underline-offset-4 hover:text-background hover:underline"
+              >
+                Already a member? Sign in
+              </Link>
             </div>
           </div>
         </section>
