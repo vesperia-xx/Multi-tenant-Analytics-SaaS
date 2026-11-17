@@ -149,6 +149,22 @@ export async function destroyCurrentSession(): Promise<void> {
   cookieStore.delete(SESSION_COOKIE);
 }
 
+/**
+ * Remembers the workspace a session last opened. Only a hint for `/app`
+ * ("continue where you left off"): every request still re-resolves the
+ * membership from the URL, so a stale or forged value grants nothing.
+ */
+export async function setActiveOrganization(
+  sessionId: string,
+  organizationId: string | null,
+): Promise<void> {
+  await prisma.session.update({
+    where: { id: sessionId },
+    data: { activeOrganizationId: organizationId },
+    select: { id: true },
+  });
+}
+
 export async function revokeOtherSessions(userId: string, keepSessionId?: string): Promise<number> {
   const result = await prisma.session.updateMany({
     where: {

@@ -259,9 +259,14 @@ GET /app/acme/orders
                · toda consulta de datos recibe ese orgId
 ```
 
-El layout de `/app/[orgSlug]` resuelve el contexto una vez y lo pasa a las páginas. Las
-Server Actions y Route Handlers **vuelven a resolverlo**: nunca confían en un valor enviado
-por el cliente.
+El layout de `/app/[orgSlug]` resuelve el contexto con `requireOrgContext(slug)`, memoizado por
+request con `cache()` de React: layout, página y acciones comparten una sola consulta. Las
+Server Actions y Route Handlers **vuelven a resolverlo** con el slug recibido y, si la membresía
+no existe, responden con un error genérico en lugar de filtrar la existencia del tenant.
+
+El slug es el único identificador de tenant que viaja desde el cliente. El selector de
+organización envía un slug, no un `orgId`, y el servidor revalida la membresía antes de recordarlo
+en `sessions.active_organization_id` (solo como pista para "continuar donde lo dejaste").
 
 ### 4.2 Defensa en profundidad
 
@@ -309,6 +314,32 @@ Reglas adicionales:
 
 Las membresías son por organización: un mismo usuario puede ser Owner en un workspace y
 Viewer en otro. El selector de organización solo muestra membresías reales.
+
+La matriz vive en `src/lib/permissions.ts` (`can`, `assignableRoles`, `canManageMember`) y se usa
+**dos veces**: en las Server Actions para decidir y en la UI para ocultar. Las reglas de jerarquía
+se aplican antes que el rango, de modo que un Manager no puede gestionar membresías aunque tenga
+más rango que un Viewer.
+
+### 5.1 Invitaciones
+
+```
+Owner/Admin invita → token de 32 bytes
+        │
+        ├─ se guarda SHA-256(token) en invitations.token_hash
+        ├─ email + rol + expires_at (7 días)
+        ├─ re-invitar al mismo email revoca el enlace anterior
+        └─ el enlace se envía por Resend; sin proveedor se muestra al invitador
+
+Invitado abre /invite/[token]
+        ├─ sin sesión → /login?next=/invite/[token]
+        ├─ email de la sesión ≠ email invitado → se rechaza
+        ├─ token aceptado/revocado/expirado → mensaje explícito
+        └─ ok → upsert de Membership + audit member.joined + redirect al workspace
+```
+
+El enlace de invitación se muestra en la UI únicamente a quien invitó (ya tiene `member:invite`),
+no al invitado. Es la diferencia con los enlaces de reset, que solo se exponen para cuentas
+`is_demo`.
 
 ---
 
@@ -423,6 +454,8 @@ revalidarse tras una mutación.
 | Contadores en Postgres | Redis / memoria | Funciona en serverless sin infraestructura extra |
 | `scrypt` nativo | Argon2id (`@node-rs/argon2`) | Cero dependencias nativas; formato versionado permite migrar rehasheando |
 | Expiración absoluta de sesión | Expiración deslizante | La cookie solo se reescribe en acciones/handlers; mantener el modelo explícito
+| Invitación ligada al email | Enlace de un solo uso sin email | Un enlace reenviado no puede canjearse desde otra cuenta
+| Matriz de permisos compartida | Checks duplicados en UI y servidor | Una sola fuente evita que el botón y el endpoint discrepen
 | PDF con `@react-pdf/renderer` | Puppeteer / HTML print | Runtime Node sin binarios de navegador, apto para Vercel |
 | Sin microfrontends | Varias apps | Un solo dominio, un solo deploy, un solo modelo de sesión |
 
@@ -434,7 +467,7 @@ revalidarse tras una mutación.
 | --- | --- | --- |
 | 1 | Scaffold, esquema, migración, sistema de diseño, landing | ✅ |
 | 2 | Sesiones, registro, login, reset, rutas protegidas | ✅ |
-| 3 | Organizaciones, invitaciones, selector, guards RBAC | ⏳ |
+| 3 | Organizaciones, invitaciones, selector, guards RBAC | ✅ |
 | 4 | KPIs y gráficos desde SQL real | ⏳ |
 | 5 | Tablas de pedidos, clientes y productos | ⏳ |
 | 6 | Reportes CSV y PDF | ⏳ |

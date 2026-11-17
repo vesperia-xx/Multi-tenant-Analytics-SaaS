@@ -1,13 +1,16 @@
 import { format, formatDistanceToNow } from "date-fns";
+import { ArrowRight, Plus } from "lucide-react";
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Role } from "@/generated/prisma/enums";
 import { describeUserAgent } from "@/lib/user-agent";
 import { revokeOtherSessionsAction, revokeSessionAction } from "@/server/auth/actions";
 import { requireViewer } from "@/server/auth/session";
 import { prisma } from "@/server/db/client";
+
+import { CreateWorkspaceForm } from "./create-workspace-form";
 
 const roleLabels: Record<Role, string> = {
   OWNER: "Owner",
@@ -89,6 +92,9 @@ export async function AccountOverview() {
 
   const firstName = viewer.user.name.split(" ")[0] ?? viewer.user.name;
   const otherDevices = sessions.filter((session) => session.id !== viewer.sessionId).length;
+  const activeMembership = memberships.find(
+    (membership) => membership.organization.id === viewer.activeOrganizationId,
+  );
 
   return (
     <div className="flex flex-col gap-12">
@@ -103,6 +109,16 @@ export async function AccountOverview() {
         <p className="mt-3 text-sm text-muted-foreground">
           {viewer.user.email} · member since {format(viewer.user.createdAt, "MMMM yyyy")}
         </p>
+
+        {activeMembership ? (
+          <Link
+            href={`/app/${activeMembership.organization.slug}`}
+            className={`${buttonVariants({ variant: "secondary", size: "sm" })} mt-6`}
+          >
+            Continue in {activeMembership.organization.name}
+            <ArrowRight className="size-3.5" />
+          </Link>
+        ) : null}
       </header>
 
       <section aria-labelledby="workspaces-heading">
@@ -130,18 +146,40 @@ export async function AccountOverview() {
                     /app/{membership.organization.slug}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {membership.organization.isDemo ? (
                     <Badge variant="outline">Demo</Badge>
                   ) : null}
                   <Badge variant={roleVariants[membership.role]}>
                     {roleLabels[membership.role]}
                   </Badge>
+                  <Link
+                    href={`/app/${membership.organization.slug}`}
+                    className={buttonVariants({ variant: "outline", size: "sm" })}
+                  >
+                    Open
+                    <ArrowRight className="size-3" />
+                  </Link>
                 </div>
               </li>
             ))}
           </ul>
         )}
+
+        <details className="group mt-6 border border-border bg-card">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-accent/50 [&::-webkit-details-marker]:hidden">
+            <span className="flex items-center gap-2 text-sm font-medium">
+              <Plus className="size-4 text-primary" aria-hidden="true" />
+              Create a workspace
+            </span>
+            <span className="font-mono text-[0.5rem] uppercase tracking-[0.14em] text-muted-foreground">
+              You become its Owner
+            </span>
+          </summary>
+          <div className="border-t border-border p-4">
+            <CreateWorkspaceForm />
+          </div>
+        </details>
       </section>
 
       <section aria-labelledby="sessions-heading">

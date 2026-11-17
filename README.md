@@ -4,7 +4,7 @@
 
 Vortex Metrics gives every organization its own workspace, its own data and its own permissions. Dashboards, tables and exports are powered by real SQL aggregates over a seeded PostgreSQL dataset — no mocks at runtime, no client-side math.
 
-> **Status:** Phase 2 of 10 — authentication (register, login, logout, password reset, sessions).
+> **Status:** Phase 3 of 10 — organizations, memberships, invitations, org switcher and RBAC guards.
 > See the [roadmap](#roadmap) for what ships next.
 
 ---
@@ -73,7 +73,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the ERD, RBAC matrix and 
 | --- | --- | --- |
 | 1 | Setup, architecture, database schema, design system, marketing shell | ✅ |
 | 2 | Authentication: register, login, logout, password reset, sessions | ✅ |
-| 3 | Organizations, memberships, invitations, org switcher, RBAC guards | ⏳ |
+| 3 | Organizations, memberships, invitations, org switcher, RBAC guards | ✅ |
 | 4 | Dashboard KPIs and analytics charts from real SQL | ⏳ |
 | 5 | Orders, customers and products tables (search, filters, sorting, pagination) | ⏳ |
 | 6 | CSV and PDF reports | ⏳ |
@@ -161,25 +161,26 @@ scripts/
   db-check.ts             Connectivity + index smoke test
 src/
   app/
-    (auth)/               login, register, forgot-password, reset-password
-    app/                  authenticated account area (workspaces, sessions)
+    (auth)/               login, register, forgot-password, reset-password, invite/[token]
+    app/                  account area: all workspaces and active sessions
+    app/[orgSlug]/        tenant-scoped shell, overview and settings
     page.tsx              Marketing landing page
     layout.tsx            Root layout, theme provider, toasts
     globals.css           Design tokens (oklch) + utilities
   components/
-    app/                  Account overview and skeleton
-    auth/                 Auth shell, forms, feedback
+    app/                  Account overview, workspace shell, members and invitations
+    auth/                 Auth shell, forms, feedback, invitation acceptance
     brand/                Logo
     layout/               Marketing header, mobile nav, footer
     marketing/            Printed report specimen
     theme/                Theme provider and toggle
     ui/                   Button, Card, Badge, Input, Field, Toaster
-  lib/                    Utilities, site config, env validation, Zod schemas
+  lib/                    Utilities, env validation, Zod schemas, permission matrix
   server/
     auth/                 Password hashing, sessions, rate limits, Server Actions
     db/client.ts          Prisma client with pg / Neon adapters
     email/                Resend delivery (optional)
-    org/                  Workspace slugs
+    org/                  Tenant context, invitations, roles and Server Actions
   proxy.ts                Optimistic cookie check for /app/*
   generated/prisma/       Generated Prisma client (gitignored)
 ```
@@ -225,6 +226,42 @@ The workspace slug is derived from the name and reserved words (`app`, `login`, 
 
 Memberships are per organization, so one user can be an Owner in one workspace and a Viewer in another — which is exactly what the demo account does.
 
+### Resolving the tenant
+
+`/app/[orgSlug]` is the only place a tenant is named. The layout calls `requireOrgContext(slug)`, which
+reads the session, then looks for a `Membership` joining the viewer to the organization with that slug.
+No row means `notFound()`: a workspace you do not belong to is indistinguishable from one that does
+not exist.
+
+The resolved context (`{ viewer, organization, membership.role }`) is memoised per request with React
+`cache`, so the layout, the page and any action share one query. The client never posts an `orgId`.
+The switcher posts a **slug**, and the server re-checks the membership before remembering it on the
+session as a convenience hint for "continue where you left off".
+
+### Roles are one matrix, used twice
+
+`src/lib/permissions.ts` holds the permission list, the role matrix and the hierarchy rules. Server
+Actions call `can(role, permission)` and `canManageMember(actor, target)`; the UI uses the same
+functions to decide which controls to render. The rules that matter:
+
+- Owners are never modifiable, including by themselves, so the last Owner cannot be demoted.
+- An Admin can invite and manage Managers and Viewers, but never another Admin or an Owner.
+- Nobody can change their own role or remove themselves.
+- Every accepted invitation, role change, removal and settings edit lands in `audit_logs` with a
+  before/after snapshot.
+
+### Invitations
+
+An invitation is a one-time token, hashed at rest (`invitations.token_hash`), tied to one email
+address and expiring after seven days. Re-inviting the same address revokes the previous link.
+Acceptance requires the signed-in account to match the invited address, so a forwarded link cannot be
+redeemed by someone else.
+
+`RESEND_API_KEY` remains optional. Without it, the invite link is printed to the server log and — in
+development or demo mode — shown in the workspace settings to the **inviter**, who already holds
+`member:invite`. It is never shown to the invitee through this screen, unlike reset links, which are
+only surfaced for seeded demo accounts.
+
 ## Deployment
 
 The target platform is **Vercel + Neon Postgres**:
@@ -239,6 +276,11 @@ Step-by-step instructions will be added in Phase 10 (`docs/deploy.md`).
 ## Notes on the Next.js version
 
 This project runs **Next.js 16.4.6** with `cacheComponents` and `partialPrefetching` enabled. Runtime APIs (`cookies`, `headers`, `searchParams`) must sit behind Suspense boundaries, and static pages must avoid non-deterministic values at render time. The docs bundled in `node_modules/next/dist/docs/` are the reference for this version.
+
+`/app/[orgSlug]` opts out of instant navigation (`export const instant = false`) on purpose: the
+membership check must finish before the response streams so a cross-tenant URL returns a real 404
+instead of a 200 with a not-found screen inside the stream. A `loading.tsx` gives the click an
+immediate skeleton while that check runs.
 
 ## License
 

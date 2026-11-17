@@ -9,12 +9,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-svh flex-col">
       <header className="sticky top-0 z-50 border-b border-border bg-background">
-        <div className="mx-auto flex h-16 w-full max-w-5xl items-center justify-between gap-4 px-5 sm:px-8">
+        <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-4 px-5 sm:px-8">
           <Link href="/app" aria-label="Vortex Metrics account" className="rounded-[2px]">
             <Logo />
           </Link>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Link
+              href="/app"
+              className="link-underline hidden font-mono text-[0.5rem] uppercase tracking-[0.16em] text-muted-foreground transition-colors hover:text-foreground sm:block"
+            >
+              Account
+            </Link>
             <ThemeToggle />
             <form action={logoutAction}>
               <Button type="submit" variant="outline" size="sm">
