@@ -10,7 +10,7 @@ export const siteConfig = {
 
 export const marketingNav = [
   { label: "Product", href: "#product" },
-  { label: "Security", href: "#security" },
   { label: "Architecture", href: "#architecture" },
+  { label: "Access", href: "#access" },
   { label: "Stack", href: "#stack" },
 ] as const;

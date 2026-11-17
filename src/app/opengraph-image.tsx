@@ -1,10 +1,31 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+
 import { ImageResponse } from "next/og";
 
-import { siteConfig } from "@/lib/site";
+const paper = "#f8f5ee";
+const ink = "#1b1a16";
+const klein = "#1f3fd8";
+const vermilion = "#d6452f";
+const muted = "#6f6a5e";
+const rule = "#dcd6c8";
+
+const serif = "Instrument Serif";
+const mono = "IBM Plex Mono";
 
 export const alt = "Vortex Metrics — Multi-tenant analytics with strict tenant isolation";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
+
+/**
+ * Fonts are read once at module scope: how Next.js expects static OG routes to
+ * declare assets, and it keeps the route prerendered at build time.
+ */
+const [serifRegular, serifItalic, plexMono] = await Promise.all([
+  readFile(path.join(process.cwd(), "src/app/fonts/InstrumentSerif-Regular.ttf")),
+  readFile(path.join(process.cwd(), "src/app/fonts/InstrumentSerif-Italic.ttf")),
+  readFile(path.join(process.cwd(), "src/app/fonts/IBMPlexMono-Regular.ttf")),
+]);
 
 export default function OpenGraphImage() {
   return new ImageResponse(
@@ -16,79 +37,104 @@ export default function OpenGraphImage() {
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          backgroundColor: "#0b0910",
-          backgroundImage:
-            "radial-gradient(60% 80% at 15% 0%, rgba(139,92,246,0.38) 0%, transparent 60%), radial-gradient(45% 60% at 100% 100%, rgba(34,211,238,0.16) 0%, transparent 65%)",
-          padding: "64px 72px",
-          fontFamily: "sans-serif",
-          color: "#f4f2f9",
+          backgroundColor: paper,
+          color: ink,
+          padding: "56px 64px 48px",
+          fontFamily: mono,
           position: "relative",
         }}
       >
         <div
           style={{
             position: "absolute",
-            inset: 0,
-            backgroundImage:
-              "linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px)",
-            backgroundSize: "72px 72px",
-            opacity: 0.5,
+            left: 64,
+            right: 64,
+            top: 118,
+            height: 1,
+            backgroundColor: rule,
           }}
         />
 
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: 14,
-              backgroundImage: "linear-gradient(135deg, #8b5cf6 0%, #4f46e5 50%, #22d3ee 100%)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "white",
-              fontSize: 26,
-              fontWeight: 700,
-              boxShadow: "0 0 40px rgba(139,92,246,0.45)",
-            }}
-          >
-            V
-          </div>
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <span style={{ fontSize: 24, fontWeight: 600, letterSpacing: -0.4 }}>
-              {siteConfig.name}
-            </span>
-            <span
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div
               style={{
-                fontSize: 12,
-                letterSpacing: 3,
-                textTransform: "uppercase",
-                color: "#a99fc4",
+                width: 46,
+                height: 46,
+                backgroundColor: ink,
+                color: paper,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontFamily: serif,
+                fontSize: 30,
+                lineHeight: 1,
               }}
             >
-              Multi-tenant analytics
-            </span>
+              V
+            </div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <span style={{ fontFamily: serif, fontSize: 28 }}>Vortex</span>
+              <span
+                style={{
+                  fontFamily: mono,
+                  fontSize: 12,
+                  letterSpacing: 2,
+                  textTransform: "uppercase",
+                  color: muted,
+                }}
+              >
+                Metrics
+              </span>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              fontFamily: mono,
+              fontSize: 12,
+              letterSpacing: 2,
+              textTransform: "uppercase",
+              color: muted,
+            }}
+          >
+            <span style={{ width: 7, height: 7, backgroundColor: vermilion, display: "flex" }} />
+            Specimen 04 / Multi-tenant analytics
           </div>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
-          <span
+        <div style={{ display: "flex", flexDirection: "column", gap: 26 }}>
+          <div
             style={{
-              fontSize: 64,
-              fontWeight: 600,
-              lineHeight: 1.08,
-              letterSpacing: -2.4,
-              maxWidth: 960,
+              display: "flex",
+              flexDirection: "column",
+              fontFamily: serif,
+              fontSize: 82,
+              lineHeight: 1.02,
+              letterSpacing: -1,
+              maxWidth: 1000,
             }}
           >
-            Analytics that never
-            <br />
-            <span style={{ color: "#b9a4ff" }}>cross the tenant boundary.</span>
-          </span>
-          <span style={{ fontSize: 22, color: "#b4acc7", maxWidth: 760, lineHeight: 1.5 }}>
-            PostgreSQL-native metrics, RBAC, reports and audit trails — with isolation enforced
-            at the application layer and in the database.
-          </span>
+            Analytics that never cross
+            <div style={{ display: "flex", fontFamily: serif, fontStyle: "italic", color: klein }}>
+              the tenant boundary.
+            </div>
+          </div>
+          <div
+            style={{
+              fontSize: 17,
+              lineHeight: 1.7,
+              color: muted,
+              maxWidth: 960,
+              fontFamily: mono,
+            }}
+          >
+            PostgreSQL-native metrics, RBAC, reports and audit trails — with isolation enforced at
+            the application layer and in the database.
+          </div>
         </div>
 
         <div
@@ -96,35 +142,28 @@ export default function OpenGraphImage() {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            borderTop: "1px solid rgba(255,255,255,0.12)",
-            paddingTop: 24,
+            borderTop: `1px solid ${rule}`,
+            paddingTop: 20,
           }}
         >
-          <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ display: "flex", gap: 26, fontFamily: mono, fontSize: 13, color: muted }}>
             {["PostgreSQL 16", "RLS with FORCE", "Next.js 16", "Prisma 7"].map((item) => (
-              <span
-                key={item}
-                style={{
-                  fontSize: 14,
-                  color: "#cfc7e2",
-                  border: "1px solid rgba(255,255,255,0.16)",
-                  borderRadius: 999,
-                  padding: "7px 14px",
-                  backgroundColor: "rgba(255,255,255,0.04)",
-                }}
-              >
+              <span key={item} style={{ display: "flex" }}>
                 {item}
               </span>
             ))}
           </div>
-          <span style={{ fontSize: 14, color: "#8f86a8" }}>app.vortexmetrics.io</span>
+          <span style={{ fontFamily: mono, fontSize: 13, color: muted }}>app.vortexmetrics.io</span>
         </div>
       </div>
     ),
-    ofetchOptions(),
+    {
+      ...size,
+      fonts: [
+        { name: serif, data: serifRegular, weight: 400, style: "normal" },
+        { name: serif, data: serifItalic, weight: 400, style: "italic" },
+        { name: mono, data: plexMono, weight: 400, style: "normal" },
+      ],
+    },
   );
-}
-
-function ofetchOptions() {
-  return { ...size };
 }

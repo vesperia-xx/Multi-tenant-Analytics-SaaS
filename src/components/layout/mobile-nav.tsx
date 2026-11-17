@@ -4,46 +4,49 @@ import { Menu, X } from "lucide-react";
 import { useState } from "react";
 
 import { marketingNav } from "@/lib/site";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 
 export function MobileNav() {
   const [open, setOpen] = useState(false);
 
   return (
     <div className="md:hidden">
-      <Button
-        variant="ghost"
-        size="icon"
+      <button
+        type="button"
         aria-expanded={open}
         aria-controls="mobile-navigation"
         aria-label={open ? "Close menu" : "Open menu"}
         onClick={() => setOpen((value) => !value)}
+        className="inline-flex size-9 items-center justify-center rounded-[3px] text-foreground transition-colors hover:bg-accent focus-visible:outline-none"
       >
         {open ? <X className="size-5" /> : <Menu className="size-5" />}
-      </Button>
+      </button>
 
       {open ? (
         <div
           id="mobile-navigation"
-          className="absolute inset-x-0 top-full border-b border-border bg-background/95 p-5 shadow-xl backdrop-blur-xl"
+          className="absolute inset-x-0 top-full border-b border-border bg-background px-5 pb-6 pt-1 shadow-none sm:px-8"
         >
-          <nav className="flex flex-col gap-1" aria-label="Mobile">
-            {marketingNav.map((item) => (
+          <nav className="flex flex-col" aria-label="Mobile">
+            {marketingNav.map((item, index) => (
               <a
                 key={item.href}
                 href={item.href}
                 onClick={() => setOpen(false)}
-                className="rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                className="flex items-baseline gap-3 border-b border-border py-3.5 text-sm font-medium"
               >
+                <span className="font-mono text-[0.5625rem] tracking-[0.12em] text-muted-foreground">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
                 {item.label}
               </a>
             ))}
             <a
-              href="#platform"
+              href="#demo"
               onClick={() => setOpen(false)}
-              className="mt-2 rounded-lg bg-primary px-3 py-2.5 text-center text-sm font-medium text-primary-foreground"
+              className={buttonVariants({ className: "mt-5" })}
             >
-              Explore the platform
+              Open the demo
             </a>
           </nav>
         </div>

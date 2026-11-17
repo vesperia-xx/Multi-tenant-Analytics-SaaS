@@ -1,169 +1,153 @@
-import {
-  ArrowRight,
-  BarChart3,
-  Check,
-  Database,
-  FileDown,
-  Gauge,
-  GitBranch,
-  History,
-  Layers,
-  Lock,
-  Monitor,
-  Server,
-  ShieldCheck,
-} from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
-import { DashboardPreview } from "@/components/marketing/dashboard-preview";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ReportSpecimen } from "@/components/marketing/report-specimen";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+const heroMeta = [
+  { label: "Engine", value: "PostgreSQL 16" },
+  { label: "Isolation", value: "RLS with FORCE" },
+  { label: "Tenants", value: "Acme & Nordwind" },
+];
+
+const indexFacts = [
+  { value: "14", label: "tenant-aware tables" },
+  { value: "4", label: "permission roles" },
+  { value: "5", label: "trigram indexes" },
+  { value: "1", label: "verified org context" },
+];
 
 const features = [
   {
-    icon: ShieldCheck,
     title: "Tenant isolation by construction",
-    description:
-      "Every query is scoped by the organization resolved from a verified membership. The client never chooses the tenant.",
     tag: "Multi-tenancy",
+    description:
+      "Every query is scoped by the organization resolved from a verified membership. The client never chooses the tenant, and a cross-tenant lookup returns 404.",
   },
   {
-    icon: Layers,
     title: "Roles that map to real permissions",
-    description:
-      "Owner, Admin, Manager and Viewer share one permission matrix enforced on the server and reflected in the UI.",
     tag: "RBAC",
+    description:
+      "Owner, Admin, Manager and Viewer share one permission matrix enforced on the server and reflected in the UI. An Admin can never modify the Owner.",
   },
   {
-    icon: BarChart3,
     title: "Metrics aggregated in PostgreSQL",
-    description:
-      "Revenue, orders, customers, AOV, conversion and growth come from SQL over real rows — not from mocks or client-side math.",
     tag: "Analytics",
+    description:
+      "Revenue, orders, customers, AOV, conversion and growth come from SQL over real rows — not from mocks or client-side arithmetic.",
   },
   {
-    icon: FileDown,
     title: "Reports built to leave the app",
-    description:
-      "Filtered sales reports as streaming CSV and vector PDF, with the same definitions the dashboard uses.",
     tag: "Exports",
+    description:
+      "Filtered sales reports as streaming CSV and vector PDF, generated from the same SQL definitions the dashboard and charts use.",
   },
   {
-    icon: History,
     title: "Every important change is auditable",
-    description:
-      "Actor, action, resource, timestamp and a field-level before/after diff. Price changes read like a ledger.",
     tag: "Audit",
+    description:
+      "Actor, action, resource, timestamp and a field-level before/after diff. Price changes read like a ledger, not a log line.",
   },
   {
-    icon: Gauge,
     title: "Performance measured, not assumed",
-    description:
-      "Composite indexes, trigram search, keyset-friendly pagination and query plans documented against a seeded dataset.",
     tag: "Performance",
+    description:
+      "Composite tenant indexes, trigram search, bounded pagination and query plans documented against a seeded dataset.",
   },
-] as const;
+];
 
-const securityLayers = [
+const steps = [
   {
-    icon: Lock,
-    title: "Session guard",
-    description:
-      "Opaque, hashed session tokens in PostgreSQL. Revocable, expiring and never trusted from the client alone.",
+    title: "Interface",
+    description: "React Server Components with small client islands. No business rules in components.",
   },
   {
-    icon: ShieldCheck,
-    title: "Membership + RBAC",
-    description:
-      "The organization comes from a verified membership row; permissions are checked again on every mutation.",
+    title: "Edge",
+    description: "Server Actions for writes, Route Handlers for reads and streaming exports.",
   },
   {
-    icon: Layers,
-    title: "Scoped repositories",
-    description:
-      "Data access functions require an organizationId. Cross-tenant lookups return 404, never another tenant's row.",
-  },
-  {
-    icon: Database,
-    title: "Row-Level Security",
-    description:
-      "PostgreSQL policies with FORCE RLS. If a query forgets the tenant context, it fails closed and returns nothing.",
-  },
-] as const;
-
-const architecture = [
-  {
-    icon: Monitor,
-    title: "UI",
-    description: "React Server Components + client islands. No business rules in components.",
-  },
-  {
-    icon: Server,
-    title: "API",
-    description: "Server Actions for writes, Route Handlers for reads and exports.",
-  },
-  {
-    icon: ShieldCheck,
     title: "Authorization",
-    description: "Zod validation, membership lookup, permission matrix, rate limits.",
+    description: "Zod validation, membership lookup, permission matrix and rate limits.",
   },
   {
-    icon: Layers,
     title: "Data access",
     description: "Repositories take orgId first. Analytics uses parameterized SQL.",
   },
   {
-    icon: Database,
     title: "PostgreSQL",
-    description: "Tenant indexes, pg_trgm search, transactions and RLS policies.",
+    description: "Tenant composite indexes, pg_trgm search, transactions and RLS policies.",
   },
-] as const;
-
-const stack = [
-  {
-    title: "Application",
-    items: ["Next.js 16", "React 19", "TypeScript strict", "Tailwind CSS 4"],
-  },
-  {
-    title: "Data",
-    items: ["PostgreSQL 16", "Prisma 7", "pg_trgm", "Row-Level Security"],
-  },
-  {
-    title: "Product",
-    items: ["TanStack Query", "TanStack Table", "Recharts", "Zod"],
-  },
-  {
-    title: "Delivery",
-    items: ["Vercel + Neon", "Docker Compose", "GitHub Actions", "Vitest"],
-  },
-] as const;
-
-const reportRows = [
-  { label: "Net revenue", value: "$128,430.00" },
-  { label: "Paid orders", value: "1,842" },
-  { label: "Unique customers", value: "326" },
-  { label: "Top product", value: "Aurora Desk Lamp" },
 ];
+
+const permissions = [
+  { label: "View dashboards and analytics", values: ["full", "full", "full", "full"] },
+  { label: "Export CSV and PDF", values: ["full", "full", "full", "full"] },
+  { label: "Manage orders and customers", values: ["full", "full", "full", "none"] },
+  { label: "Create and edit products", values: ["full", "full", "read", "none"] },
+  { label: "Manage members and invitations", values: ["full", "full", "none", "none"] },
+  { label: "View the audit log", values: ["full", "full", "none", "none"] },
+  { label: "Delete or transfer the organization", values: ["full", "none", "none", "none"] },
+  { label: "Modify the Owner", values: ["none", "none", "none", "none"] },
+] as const;
 
 const auditRows = [
   {
-    actor: "Ricardo M.",
+    time: "14:32",
     action: "Changed product price",
-    resource: "Aurora Desk Lamp",
+    detail: "Ricardo M. · Aurora Desk Lamp",
     before: "$49.00",
     after: "$59.00",
-    time: "2 minutes ago",
   },
   {
-    actor: "Sara K.",
+    time: "13:07",
     action: "Invited member",
-    resource: "manager@acme.test",
+    detail: "Sara K. · manager@acme.test",
     before: "—",
     after: "Manager",
-    time: "1 hour ago",
+  },
+  {
+    time: "11:54",
+    action: "Refunded order",
+    detail: "Sara K. · #ORD-10428",
+    before: "Paid",
+    after: "Refunded",
   },
 ];
+
+const stack = [
+  { title: "Application", items: ["Next.js 16", "React 19", "TypeScript strict", "Tailwind CSS 4"] },
+  { title: "Data", items: ["PostgreSQL 16", "Prisma 7", "pg_trgm", "Row-Level Security"] },
+  { title: "Product", items: ["TanStack Query", "TanStack Table", "Recharts", "Zod"] },
+  { title: "Delivery", items: ["Vercel + Neon", "Docker Compose", "GitHub Actions", "Vitest"] },
+];
+
+function SectionIntro({
+  index,
+  label,
+  title,
+  children,
+}: {
+  index: string;
+  label: string;
+  title: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="lg:sticky lg:top-24 lg:self-start">
+      <p className="flex items-center gap-2 font-mono text-[0.5625rem] uppercase tracking-[0.2em] text-muted-foreground">
+        <span className="inline-block size-1.5 bg-primary" />
+        {index} / {label}
+      </p>
+      <h2 className="mt-5 max-w-md font-serif text-[1.9rem] leading-[1.08] tracking-tight sm:text-[2.5rem]">
+        {title}
+      </h2>
+      <div className="mt-4 max-w-sm text-sm leading-relaxed text-muted-foreground">{children}</div>
+    </div>
+  );
+}
 
 export default function HomePage() {
   return (
@@ -172,532 +156,407 @@ export default function HomePage() {
 
       <main id="main" className="flex-1">
         {/* Hero */}
-        <section className="relative overflow-hidden border-b border-border/60">
-          <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10">
-            <div className="bg-radial-fade absolute inset-0 opacity-80" />
-            <div className="bg-grid mask-fade-b absolute inset-0 opacity-40" />
-          </div>
+        <section className="border-b border-border">
+          <div className="mx-auto w-full max-w-7xl px-5 sm:px-8">
+            <div className="grid items-start gap-12 py-12 lg:grid-cols-[1.08fr_0.92fr] lg:gap-16 lg:py-20">
+              <div>
+                <p className="flex items-center gap-2 font-mono text-[0.5625rem] uppercase tracking-[0.22em] text-muted-foreground">
+                  <span className="inline-block size-1.5 bg-primary" />
+                  Multi-tenant analytics · SQL-native
+                </p>
 
-          <div className="mx-auto w-full max-w-7xl px-5 pb-16 pt-16 sm:px-8 sm:pt-24">
-            <div className="mx-auto max-w-3xl text-center">
-              <Badge variant="outline" className="mx-auto border-border/80 bg-background/60">
-                <span className="size-1.5 rounded-full bg-success" />
-                Multi-tenant analytics, built for strict isolation
-              </Badge>
+                <h1 className="mt-6 text-balance font-serif text-[2.9rem] leading-[1.01] tracking-[-0.015em] sm:text-[3.75rem] lg:text-[4.2rem]">
+                  Analytics that never cross the{" "}
+                  <em className="italic text-primary">tenant boundary.</em>
+                </h1>
 
-              <h1 className="mt-5 text-balance text-4xl font-semibold tracking-tight sm:text-5xl lg:text-6xl">
-                Analytics that never{" "}
-                <span className="text-gradient">cross the tenant boundary.</span>
-              </h1>
+                <p className="mt-6 max-w-xl text-pretty text-[1.0625rem] leading-relaxed text-muted-foreground">
+                  Vortex Metrics gives every organization its own workspace, its own data and its
+                  own permissions. Real PostgreSQL metrics, role-based access, exports and an audit
+                  trail — without a single shared query.
+                </p>
 
-              <p className="mx-auto mt-5 max-w-2xl text-pretty text-base leading-relaxed text-muted-foreground sm:text-lg">
-                Vortex Metrics gives every organization its own workspace, its own data and its
-                own permissions. Real PostgreSQL metrics, role-based access, exports and an audit
-                trail — without a single shared query.
-              </p>
+                <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <a href="#product" className={buttonVariants({ size: "lg" })}>
+                    Explore the platform
+                    <ArrowRight className="size-4" />
+                  </a>
+                  <a
+                    href="#architecture"
+                    className={buttonVariants({ variant: "outline", size: "lg" })}
+                  >
+                    See how isolation works
+                  </a>
+                </div>
 
-              <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                <a
-                  href="#platform"
-                  className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-6 text-[0.9375rem] font-medium text-primary-foreground shadow-sm shadow-primary/25 transition-colors hover:bg-primary/90 sm:w-auto"
-                >
-                  Explore the platform
-                  <ArrowRight className="size-4" />
-                </a>
-                <a
-                  href="#security"
-                  className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-border bg-background/60 px-6 text-[0.9375rem] font-medium transition-colors hover:bg-accent sm:w-auto"
-                >
-                  See how isolation works
-                </a>
+                <dl className="mt-10 grid grid-cols-3 gap-4 border-t border-border pt-4">
+                  {heroMeta.map((item) => (
+                    <div key={item.label}>
+                      <dt className="font-mono text-[0.5rem] uppercase tracking-[0.16em] text-muted-foreground">
+                        {item.label}
+                      </dt>
+                      <dd className="mt-1 text-[0.8125rem] font-medium">{item.value}</dd>
+                    </div>
+                  ))}
+                </dl>
               </div>
 
-              <p className="mt-5 font-mono text-[0.6875rem] uppercase tracking-[0.18em] text-muted-foreground">
-                Next.js 16 · PostgreSQL 16 · Prisma 7 · Vercel-ready
-              </p>
-            </div>
-
-            <DashboardPreview />
-          </div>
-
-          <div className="border-t border-border/60">
-            <div className="mx-auto flex w-full max-w-7xl flex-col items-center justify-between gap-4 px-5 py-6 sm:flex-row sm:px-8">
-              <p className="text-xs text-muted-foreground">
-                One codebase, two seeded tenants, zero shared records.
-              </p>
-              <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 font-mono text-[0.6875rem] text-muted-foreground/80">
-                <span>Next.js</span>
-                <span>PostgreSQL</span>
-                <span>Prisma</span>
-                <span>TanStack Query</span>
-                <span>Recharts</span>
-                <span>Zod</span>
-              </div>
+              <ReportSpecimen />
             </div>
           </div>
         </section>
 
-        {/* Product features */}
-        <section id="product" className="border-b border-border/60 py-20 sm:py-24">
+        {/* Index strip */}
+        <section className="border-b border-border">
           <div className="mx-auto w-full max-w-7xl px-5 sm:px-8">
-            <div className="max-w-2xl">
-              <p className="font-mono text-[0.6875rem] uppercase tracking-[0.18em] text-primary">
-                The product
-              </p>
-              <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-                A dashboard is easy. A tenant-safe platform is not.
-              </h2>
-              <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+            <dl className="grid grid-cols-2 gap-x-8 gap-y-6 py-8 sm:grid-cols-4">
+              {indexFacts.map((fact) => (
+                <div key={fact.label} className="border-t border-foreground/20 pt-3">
+                  <dd className="tnum font-serif text-[1.9rem] leading-none">{fact.value}</dd>
+                  <dt className="mt-2 font-mono text-[0.5rem] uppercase tracking-[0.16em] text-muted-foreground">
+                    {fact.label}
+                  </dt>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </section>
+
+        {/* 01 — Product */}
+        <section id="product" className="border-b border-border py-16 sm:py-24">
+          <div className="mx-auto w-full max-w-7xl px-5 sm:px-8">
+            <div className="grid gap-10 lg:grid-cols-[0.34fr_0.66fr] lg:gap-16">
+              <SectionIntro index="01" label="The product" title={<>A dashboard is easy. A tenant-safe platform is not.</>}>
                 The interesting part is everything behind the charts: how a request becomes a
                 scoped query, who is allowed to change what, and how the system proves it later.
-              </p>
-            </div>
+              </SectionIntro>
 
-            <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {features.map((feature) => (
-                <Card
-                  key={feature.title}
-                  className="group relative overflow-hidden bg-card/60 transition-colors hover:border-primary/35 hover:bg-card/80"
-                >
-                  <div
-                    aria-hidden="true"
-                    className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent opacity-0 transition-opacity group-hover:opacity-100"
-                  />
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <span className="flex size-10 items-center justify-center rounded-lg border border-primary/15 bg-primary/10 text-primary">
-                        <feature.icon className="size-5" />
-                      </span>
-                      <span className="font-mono text-[0.5625rem] uppercase tracking-[0.16em] text-muted-foreground">
-                        {feature.tag}
-                      </span>
+              <ol className="border-t border-border">
+                {features.map((feature, index) => (
+                  <li
+                    key={feature.title}
+                    className="grid grid-cols-[1.75rem_1fr] gap-3 border-b border-border py-6 sm:gap-6"
+                  >
+                    <span className="tnum pt-0.5 font-mono text-[0.625rem] tracking-[0.08em] text-muted-foreground">
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                    <div>
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                        <h3 className="text-[0.9375rem] font-semibold tracking-tight">
+                          {feature.title}
+                        </h3>
+                        <span className="font-mono text-[0.5rem] uppercase tracking-[0.16em] text-muted-foreground">
+                          {feature.tag}
+                        </span>
+                      </div>
+                      <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted-foreground">
+                        {feature.description}
+                      </p>
                     </div>
-                    <CardTitle className="mt-4 text-[0.9375rem]">{feature.title}</CardTitle>
-                    <CardDescription>{feature.description}</CardDescription>
-                  </CardHeader>
-                </Card>
-              ))}
+                  </li>
+                ))}
+              </ol>
             </div>
           </div>
         </section>
 
-        {/* Platform detail */}
-        <section id="platform" className="border-b border-border/60 py-20 sm:py-24">
-          <div className="mx-auto grid w-full max-w-7xl gap-12 px-5 sm:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+        {/* 02 — Architecture */}
+        <section id="architecture" className="border-b border-border py-16 sm:py-24">
+          <div className="mx-auto w-full max-w-7xl px-5 sm:px-8">
+            <div className="grid gap-10 lg:grid-cols-[0.34fr_0.66fr] lg:gap-16">
+              <SectionIntro
+                index="02"
+                label="Architecture"
+                title={
+                  <>
+                    A request has one path — and it is verified{" "}
+                    <em className="italic text-primary">twice.</em>
+                  </>
+                }
+              >
+                UI, authorization, data access and SQL stay separable. The same sequence powers
+                dashboards, tables and exports.
+              </SectionIntro>
+
+              <div className="min-w-0">
+                <ol className="border-t border-border">
+                  {steps.map((step, index) => (
+                    <li
+                      key={step.title}
+                      className="grid grid-cols-[1.75rem_1fr] items-baseline gap-3 border-b border-border py-4 sm:gap-6"
+                    >
+                      <span className="tnum font-mono text-[0.625rem] tracking-[0.08em] text-muted-foreground">
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      <p className="text-sm text-muted-foreground">
+                        <span className="font-semibold text-foreground">{step.title}.</span>{" "}
+                        {step.description}
+                      </p>
+                    </li>
+                  ))}
+                </ol>
+
+                <div className="mt-8 border border-border bg-card">
+                  <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+                    <span className="font-mono text-[0.5625rem] uppercase tracking-[0.16em] text-muted-foreground">
+                      tenant-guard.ts
+                    </span>
+                    <span className="font-mono text-[0.5rem] uppercase tracking-[0.14em] text-muted-foreground">
+                      application
+                    </span>
+                  </div>
+                  <pre className="overflow-x-auto px-4 py-4 font-mono text-[0.6875rem] leading-[1.7]">
+                    <code>
+                      <span className="text-primary">const</span>{" "}
+                      <span>ctx</span> = <span className="text-primary">await</span>{" "}
+                      <span className="text-chart-4">requirePermission</span>
+                      <span className="text-muted-foreground">(</span>
+                      <span className="text-destructive">orgSlug</span>
+                      <span className="text-muted-foreground">,</span>{" "}
+                      <span className="text-destructive">&quot;analytics:read&quot;</span>
+                      <span className="text-muted-foreground">);</span>
+                      {"\n\n"}
+                      <span className="text-muted-foreground">
+                        {"// orgId comes from the verified membership,"}
+                      </span>
+                      {"\n"}
+                      <span className="text-muted-foreground">
+                        {"// never from the request body."}
+                      </span>
+                      {"\n"}
+                      <span className="text-primary">const</span> <span>revenue</span> ={" "}
+                      <span className="text-primary">await</span>{" "}
+                      <span className="text-chart-4">analytics</span>
+                      <span className="text-muted-foreground">.</span>
+                      <span className="text-chart-4">revenue</span>
+                      <span className="text-muted-foreground">(</span>
+                      <span>ctx.org.id</span>
+                      <span className="text-muted-foreground">,</span> <span>range</span>
+                      <span className="text-muted-foreground">);</span>
+                    </code>
+                  </pre>
+
+                  <div className="flex items-center justify-between border-y border-border px-4 py-2.5">
+                    <span className="font-mono text-[0.5625rem] uppercase tracking-[0.16em] text-muted-foreground">
+                      rls.sql
+                    </span>
+                    <span className="font-mono text-[0.5rem] uppercase tracking-[0.14em] text-muted-foreground">
+                      postgres
+                    </span>
+                  </div>
+                  <pre className="overflow-x-auto px-4 py-4 font-mono text-[0.6875rem] leading-[1.7]">
+                    <code>
+                      <span className="text-primary">ALTER TABLE</span> <span>orders</span>{" "}
+                      <span className="text-primary">ENABLE ROW LEVEL SECURITY</span>
+                      <span className="text-muted-foreground">;</span>
+                      {"\n"}
+                      <span className="text-primary">ALTER TABLE</span> <span>orders</span>{" "}
+                      <span className="text-primary">FORCE ROW LEVEL SECURITY</span>
+                      <span className="text-muted-foreground">;</span>
+                      {"\n\n"}
+                      <span className="text-primary">CREATE POLICY</span>{" "}
+                      <span>tenant_isolation</span> <span className="text-primary">ON</span>{" "}
+                      <span>orders</span>
+                      {"\n"}
+                      <span className="text-primary">USING</span>{" "}
+                      <span className="text-muted-foreground">(</span>
+                      {"\n  "}
+                      <span>organization_id</span>{" "}
+                      <span className="text-muted-foreground">=</span>{" "}
+                      <span className="text-chart-4">current_setting</span>
+                      <span className="text-muted-foreground">(</span>
+                      <span className="text-destructive">
+                        &apos;app.current_org_id&apos;
+                      </span>
+                      <span className="text-muted-foreground">)::</span>
+                      <span className="text-chart-4">uuid</span>
+                      {"\n"}
+                      <span className="text-muted-foreground">);</span>
+                    </code>
+                  </pre>
+                  <p className="border-t border-border px-4 py-3 text-[0.6875rem] leading-relaxed text-muted-foreground">
+                    Cross-tenant reads return 404 — not 403 — so the API never confirms that a
+                    record exists in another tenant.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* 03 — Access */}
+        <section id="access" className="border-b border-border py-16 sm:py-24">
+          <div className="mx-auto w-full max-w-7xl px-5 sm:px-8">
+            <div className="grid gap-10 lg:grid-cols-[0.34fr_0.66fr] lg:gap-16">
+              <SectionIntro index="03" label="Access" title={<>Roles that map to real permissions.</>}>
+                One matrix, enforced on the server and reflected in the UI. Memberships are per
+                organization, so the same person can own one workspace and only read another.
+              </SectionIntro>
+
+              <div className="min-w-0">
+                <div className="overflow-x-auto border border-border">
+                  <table className="w-full min-w-[34rem] border-collapse text-left">
+                    <thead>
+                      <tr className="border-b border-border bg-secondary/60">
+                        <th className="px-4 py-3 font-mono text-[0.5rem] font-normal uppercase tracking-[0.16em] text-muted-foreground">
+                          Permission
+                        </th>
+                        {["Owner", "Admin", "Manager", "Viewer"].map((role) => (
+                          <th
+                            key={role}
+                            className="px-3 py-3 text-center font-mono text-[0.5rem] font-normal uppercase tracking-[0.16em] text-muted-foreground"
+                          >
+                            {role}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {permissions.map((row) => (
+                        <tr key={row.label}>
+                          <td className="px-4 py-3 text-[0.8125rem]">{row.label}</td>
+                          {row.values.map((value, index) => (
+                            <td key={index} className="px-3 py-3 text-center">
+                              {value === "full" ? (
+                                <Check
+                                  className="mx-auto size-3.5 text-primary"
+                                  aria-label="Allowed"
+                                />
+                              ) : value === "read" ? (
+                                <span className="font-mono text-[0.5rem] uppercase tracking-[0.1em] text-muted-foreground">
+                                  read
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground/60" aria-label="Not allowed">
+                                  —
+                                </span>
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <p className="mt-3 flex flex-wrap items-center gap-4 font-mono text-[0.5rem] uppercase tracking-[0.14em] text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <Check className="size-3 text-primary" aria-hidden="true" /> allowed
+                  </span>
+                  <span>read = list only</span>
+                  <span>— = denied</span>
+                </p>
+
+                <div className="mt-12">
+                  <div className="flex items-baseline justify-between border-b border-border pb-2">
+                    <h3 className="font-mono text-[0.5625rem] uppercase tracking-[0.18em] text-muted-foreground">
+                      Audit trail
+                    </h3>
+                    <span className="font-mono text-[0.5rem] uppercase tracking-[0.14em] text-muted-foreground">
+                      append-only · before / after
+                    </span>
+                  </div>
+                  <ul className="divide-y divide-border">
+                    {auditRows.map((row) => (
+                      <li
+                        key={`${row.time}-${row.action}`}
+                        className="grid gap-x-6 gap-y-1 py-4 sm:grid-cols-[4rem_1fr_auto] sm:items-baseline"
+                      >
+                        <span className="tnum font-mono text-[0.625rem] text-muted-foreground">
+                          {row.time}
+                        </span>
+                        <div>
+                          <p className="text-[0.8125rem] font-medium">{row.action}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">{row.detail}</p>
+                        </div>
+                        <div className="tnum flex items-center gap-2 font-mono text-[0.6875rem]">
+                          <span className="text-muted-foreground line-through decoration-destructive/60">
+                            {row.before}
+                          </span>
+                          <span className="text-muted-foreground/60">→</span>
+                          <span className="font-medium">{row.after}</span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* 04 — Stack */}
+        <section id="stack" className="border-b border-border py-16 sm:py-24">
+          <div className="mx-auto w-full max-w-7xl px-5 sm:px-8">
+            <div className="grid gap-10 lg:grid-cols-[0.34fr_0.66fr] lg:gap-16">
+              <SectionIntro index="04" label="Stack" title={<>Boring choices, deliberately.</>}>
+                Tools that make the isolation model easy to reason about, test and deploy — and
+                nothing that needs a separate runtime to stay correct.
+              </SectionIntro>
+
+              <dl className="grid gap-x-10 gap-y-8 sm:grid-cols-2">
+                {stack.map((group) => (
+                  <div key={group.title} className="border-t border-foreground/20 pt-4">
+                    <dt className="font-mono text-[0.5rem] uppercase tracking-[0.18em] text-muted-foreground">
+                      {group.title}
+                    </dt>
+                    <dd className="mt-3 flex flex-col gap-1.5 text-sm">
+                      {group.items.map((item) => (
+                        <span key={item}>{item}</span>
+                      ))}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          </div>
+        </section>
+
+        {/* Demo CTA */}
+        <section id="demo" className="bg-foreground py-16 text-background sm:py-24">
+          <div className="mx-auto grid w-full max-w-7xl gap-10 px-5 sm:px-8 lg:grid-cols-[1fr_auto] lg:items-end">
             <div>
-              <p className="font-mono text-[0.6875rem] uppercase tracking-[0.18em] text-primary">
-                Inside the product
+              <p className="font-mono text-[0.5625rem] uppercase tracking-[0.22em] text-background/55">
+                Milestone 01 / Foundation
               </p>
-              <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-                Answers your finance team can audit.
+              <h2 className="mt-4 max-w-2xl font-serif text-[2.4rem] leading-[1.05] tracking-tight sm:text-[3.5rem]">
+                A demo you can audit, not just scroll.
               </h2>
-              <p className="mt-4 text-base leading-relaxed text-muted-foreground">
-                The dashboard, the analytics page and every export share the same metric
-                definitions. When revenue moves, you can explain exactly why.
+              <p className="mt-5 max-w-xl text-sm leading-relaxed text-background/70">
+                The live workspace is seeded with Acme Inc and Nordwind Studio: two tenants,
+                distinct data, and a single account that belongs to both. Switch organizations,
+                then try to reach the other one.
               </p>
 
-              <ul className="mt-8 flex flex-col gap-4">
+              <ul className="mt-7 flex flex-wrap gap-x-6 gap-y-2 font-mono text-[0.5625rem] uppercase tracking-[0.14em] text-background/60">
                 {[
-                  "Date ranges, product and category filters — with automatic period comparison.",
-                  "Top products, category share, customer growth and conversion from real traffic.",
-                  "Server-side search, sorting and pagination on orders, customers and products.",
-                  "Exports that reuse the same SQL, so CSV and PDF never disagree with the chart.",
+                  "Acme + Nordwind tenants",
+                  "Owner / Admin / Manager / Viewer",
+                  "CSV + PDF exports",
+                  "Audit diffs",
                 ].map((item) => (
-                  <li key={item} className="flex items-start gap-3 text-sm text-muted-foreground">
-                    <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-success/12 text-success">
-                      <Check className="size-3" />
-                    </span>
+                  <li key={item} className="flex items-center gap-1.5">
+                    <span className="inline-block size-1 bg-background/70" />
                     {item}
                   </li>
                 ))}
               </ul>
             </div>
 
-            <div className="grid gap-4">
-              <Card className="shadow-glow bg-card/80">
-                <CardHeader className="pb-4">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm">Sales report</CardTitle>
-                    <Badge variant="success" className="text-[0.5625rem]">
-                      Ready
-                    </Badge>
-                  </div>
-                  <CardDescription className="text-xs">
-                    Acme Inc · May 1 – May 31, 2026
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <dl className="divide-y divide-border/70 rounded-lg border border-border/70 bg-background/40">
-                    {reportRows.map((row) => (
-                      <div
-                        key={row.label}
-                        className="flex items-center justify-between gap-4 px-3 py-2.5"
-                      >
-                        <dt className="text-xs text-muted-foreground">{row.label}</dt>
-                        <dd className="truncate font-mono text-xs font-medium">{row.value}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <span className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background/60 px-3 text-xs font-medium">
-                      <FileDown className="size-3.5 text-primary" /> Export CSV
-                    </span>
-                    <span className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background/60 px-3 text-xs font-medium">
-                      <FileDown className="size-3.5 text-primary" /> Export PDF
-                    </span>
-                    <span className="ml-auto inline-flex h-8 items-center rounded-md bg-primary/10 px-3 text-[0.6875rem] font-medium text-primary">
-                      1,842 rows
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-card/80">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm">Audit log</CardTitle>
-                    <span className="font-mono text-[0.5625rem] uppercase tracking-wider text-muted-foreground">
-                      Immutable
-                    </span>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <ul className="flex flex-col gap-3">
-                    {auditRows.map((row) => (
-                      <li
-                        key={`${row.actor}-${row.resource}`}
-                        className="rounded-lg border border-border/70 bg-background/40 p-3"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="truncate text-xs font-medium">{row.action}</p>
-                          <span className="shrink-0 text-[0.5625rem] text-muted-foreground">
-                            {row.time}
-                          </span>
-                        </div>
-                        <p className="mt-0.5 truncate text-[0.6875rem] text-muted-foreground">
-                          {row.actor} · {row.resource}
-                        </p>
-                        <div className="mt-2 flex items-center gap-1.5 font-mono text-[0.625rem]">
-                          <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-destructive line-through">
-                            {row.before}
-                          </span>
-                          <ArrowRight className="size-2.5 text-muted-foreground" />
-                          <span className="rounded bg-success/10 px-1.5 py-0.5 text-success">
-                            {row.after}
-                          </span>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </section>
-
-        {/* Security */}
-        <section id="security" className="relative overflow-hidden border-b border-border/60 py-20 sm:py-24">
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute right-0 top-0 -z-10 size-[32rem] rounded-full bg-primary/8 blur-3xl"
-          />
-          <div className="mx-auto grid w-full max-w-7xl gap-12 px-5 sm:px-8 lg:grid-cols-[1fr_1.05fr] lg:items-center">
-            <div>
-              <p className="font-mono text-[0.6875rem] uppercase tracking-[0.18em] text-primary">
-                Security model
-              </p>
-              <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-                Isolation is enforced, not assumed.
-              </h2>
-              <p className="mt-4 text-base leading-relaxed text-muted-foreground">
-                Multi-tenancy fails when one query forgets a <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.8125rem]">WHERE</code>{" "}
-                clause. Vortex uses independent layers so a single mistake does not become a data
-                breach.
-              </p>
-
-              <div className="mt-8 grid gap-3 sm:grid-cols-2">
-                {securityLayers.map((layer) => (
-                  <div
-                    key={layer.title}
-                    className="rounded-xl border border-border/70 bg-card/50 p-4"
-                  >
-                    <layer.icon className="size-5 text-primary" />
-                    <h3 className="mt-3 text-sm font-semibold">{layer.title}</h3>
-                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                      {layer.description}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <Card className="overflow-hidden bg-[#0b0910] text-zinc-300 shadow-2xl">
-              <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
-                <span className="size-2.5 rounded-full bg-white/15" />
-                <span className="size-2.5 rounded-full bg-white/15" />
-                <span className="size-2.5 rounded-full bg-white/15" />
-                <span className="ml-2 font-mono text-[0.625rem] text-zinc-500">
-                  tenant-guard.ts + rls.sql
-                </span>
-              </div>
-              <div className="space-y-6 p-5 font-mono text-[0.6875rem] leading-relaxed sm:text-xs">
-                <div>
-                  <p className="mb-3 flex items-center gap-2 text-[0.5625rem] uppercase tracking-[0.16em] text-zinc-500">
-                    <ShieldCheck className="size-3 text-violet-400" /> Application guard
-                  </p>
-                  <pre className="overflow-x-auto">
-                    <code>
-                      <span className="text-fuchsia-400">const</span>{" "}
-                      <span className="text-zinc-200">ctx</span> ={" "}
-                      <span className="text-fuchsia-400">await</span>{" "}
-                      <span className="text-sky-400">requirePermission</span>
-                      <span className="text-zinc-400">(</span>
-                      <span className="text-emerald-300">orgSlug</span>
-                      <span className="text-zinc-400">,</span>{" "}
-                      <span className="text-amber-300">&quot;analytics:read&quot;</span>
-                      <span className="text-zinc-400">);</span>
-                      {"\n\n"}
-                      <span className="text-zinc-500">
-                        {"// orgId comes from the verified membership,"}
-                      </span>
-                      {"\n"}
-                      <span className="text-zinc-500">{"// never from the request body."}</span>
-                      {"\n"}
-                      <span className="text-fuchsia-400">const</span>{" "}
-                      <span className="text-zinc-200">revenue</span> ={" "}
-                      <span className="text-fuchsia-400">await</span>{" "}
-                      <span className="text-sky-400">analytics</span>
-                      <span className="text-zinc-400">.</span>
-                      <span className="text-sky-400">revenue</span>
-                      <span className="text-zinc-400">(</span>
-                      <span className="text-zinc-200">ctx.org.id</span>
-                      <span className="text-zinc-400">,</span>{" "}
-                      <span className="text-zinc-200">range</span>
-                      <span className="text-zinc-400">);</span>
-                    </code>
-                  </pre>
-                </div>
-
-                <div className="h-px bg-white/10" />
-
-                <div>
-                  <p className="mb-3 flex items-center gap-2 text-[0.5625rem] uppercase tracking-[0.16em] text-zinc-500">
-                    <Database className="size-3 text-violet-400" /> PostgreSQL RLS
-                  </p>
-                  <pre className="overflow-x-auto">
-                    <code>
-                      <span className="text-fuchsia-400">ALTER TABLE</span>{" "}
-                      <span className="text-zinc-200">orders</span>{" "}
-                      <span className="text-fuchsia-400">ENABLE ROW LEVEL SECURITY</span>
-                      <span className="text-zinc-400">;</span>
-                      {"\n"}
-                      <span className="text-fuchsia-400">ALTER TABLE</span>{" "}
-                      <span className="text-zinc-200">orders</span>{" "}
-                      <span className="text-fuchsia-400">FORCE ROW LEVEL SECURITY</span>
-                      <span className="text-zinc-400">;</span>
-                      {"\n\n"}
-                      <span className="text-fuchsia-400">CREATE POLICY</span>{" "}
-                      <span className="text-zinc-200">tenant_isolation</span>{" "}
-                      <span className="text-fuchsia-400">ON</span>{" "}
-                      <span className="text-zinc-200">orders</span>
-                      {"\n"}
-                      <span className="text-fuchsia-400">USING</span>
-                      <span className="text-zinc-400"> (</span>
-                      {"\n  "}
-                      <span className="text-zinc-200">organization_id</span>{" "}
-                      <span className="text-zinc-400">=</span>{" "}
-                      <span className="text-sky-400">current_setting</span>
-                      <span className="text-zinc-400">(</span>
-                      <span className="text-amber-300">&apos;app.current_org_id&apos;</span>
-                      <span className="text-zinc-400">)::</span>
-                      <span className="text-sky-400">uuid</span>
-                      {"\n"}
-                      <span className="text-zinc-400">);</span>
-                    </code>
-                  </pre>
-                </div>
-              </div>
-              <div className="border-t border-white/10 px-5 py-3 text-[0.625rem] text-zinc-500">
-                Cross-tenant reads return 404 — not 403 — so the API never leaks that a record
-                exists in another tenant.
-              </div>
-            </Card>
-          </div>
-        </section>
-
-        {/* Architecture */}
-        <section id="architecture" className="border-b border-border/60 py-20 sm:py-24">
-          <div className="mx-auto w-full max-w-7xl px-5 sm:px-8">
-            <div className="max-w-2xl">
-              <p className="font-mono text-[0.6875rem] uppercase tracking-[0.18em] text-primary">
-                Architecture
-              </p>
-              <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-                A request has one path — and it is verified twice.
-              </h2>
-              <p className="mt-4 text-base leading-relaxed text-muted-foreground">
-                UI, authorization, data access and SQL stay separable. The same sequence powers
-                dashboards, tables and exports.
-              </p>
-            </div>
-
-            <ol className="mt-12 grid gap-3 lg:grid-cols-5">
-              {architecture.map((layer, index) => (
-                <li key={layer.title} className="relative">
-                  <div className="h-full rounded-xl border border-border/70 bg-card/50 p-5">
-                    <div className="flex items-center justify-between">
-                      <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                        <layer.icon className="size-4" />
-                      </span>
-                      <span className="font-mono text-[0.625rem] text-muted-foreground">
-                        0{index + 1}
-                      </span>
-                    </div>
-                    <h3 className="mt-4 text-sm font-semibold">{layer.title}</h3>
-                    <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                      {layer.description}
-                    </p>
-                  </div>
-                  {index < architecture.length - 1 ? (
-                    <ArrowRight className="absolute -right-3 top-1/2 hidden size-4 -translate-y-1/2 text-border lg:block" />
-                  ) : null}
-                </li>
-              ))}
-            </ol>
-
-            <div className="mt-8 grid gap-3 rounded-xl border border-border/70 bg-muted/20 p-5 sm:grid-cols-3">
-              {[
-                {
-                  icon: GitBranch,
-                  title: "URL-scoped tenant",
-                  copy: "/app/[orgSlug] resolves to a verified membership on every request.",
-                },
-                {
-                  icon: Lock,
-                  title: "Server-owned context",
-                  copy: "orgId and role come from the guard. The client cannot submit them.",
-                },
-                {
-                  icon: Gauge,
-                  title: "Measured performance",
-                  copy: "Indexes and query plans are documented against a real seeded dataset.",
-                },
-              ].map((item) => (
-                <div key={item.title} className="flex gap-3">
-                  <item.icon className="mt-0.5 size-4 shrink-0 text-primary" />
-                  <div>
-                    <h3 className="text-xs font-semibold">{item.title}</h3>
-                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                      {item.copy}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* Stack */}
-        <section id="stack" className="border-b border-border/60 py-20 sm:py-24">
-          <div className="mx-auto w-full max-w-7xl px-5 sm:px-8">
-            <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
-              <div className="max-w-xl">
-                <p className="font-mono text-[0.6875rem] uppercase tracking-[0.18em] text-primary">
-                  Stack
-                </p>
-                <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-                  Boring choices, deliberately.
-                </h2>
-                <p className="mt-4 text-base leading-relaxed text-muted-foreground">
-                  Tools that make the isolation model easy to reason about, test and deploy.
-                </p>
-              </div>
-              <Badge variant="outline" className="w-fit bg-background/60">
-                <Check className="size-3 text-success" /> Deployable on Vercel
-              </Badge>
-            </div>
-
-            <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {stack.map((group) => (
-                <Card key={group.title} className="bg-card/50 p-5">
-                  <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    {group.title}
-                  </h3>
-                  <ul className="mt-4 flex flex-wrap gap-1.5">
-                    {group.items.map((item) => (
-                      <li
-                        key={item}
-                        className="rounded-md border border-border/70 bg-background/50 px-2.5 py-1 font-mono text-[0.6875rem] text-muted-foreground"
-                      >
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                </Card>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* Demo CTA */}
-        <section id="demo" className="py-20 sm:py-24">
-          <div className="mx-auto w-full max-w-7xl px-5 sm:px-8">
-            <div className="relative overflow-hidden rounded-2xl border border-primary/25 bg-card/60 px-6 py-12 sm:px-12 sm:py-16">
-              <div
-                aria-hidden="true"
-                className="bg-radial-fade pointer-events-none absolute inset-0 -z-10 opacity-60"
-              />
-              <div className="mx-auto max-w-2xl text-center">
-                <Badge variant="outline" className="mx-auto bg-background/60">
-                  <span className="size-1.5 rounded-full bg-warning" />
-                  Milestone 1 · Foundation
-                </Badge>
-                <h2 className="mt-5 text-3xl font-semibold tracking-tight sm:text-4xl">
-                  A demo you can audit, not just scroll.
-                </h2>
-                <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-muted-foreground">
-                  The live workspace is seeded with Acme Inc and Nordwind Studio: two tenants,
-                  distinct data and a single account that belongs to both. Switch organizations,
-                  then try to reach the other one.
-                </p>
-
-                <div className="mt-7 flex flex-wrap items-center justify-center gap-2">
-                  {[
-                    "Acme + Nordwind tenants",
-                    "Owner / Admin / Manager / Viewer",
-                    "CSV + PDF exports",
-                    "Audit diffs",
-                  ].map((item) => (
-                    <span
-                      key={item}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-3 py-1 text-[0.6875rem] text-muted-foreground"
-                    >
-                      <Check className="size-3 text-success" />
-                      {item}
-                    </span>
-                  ))}
-                </div>
-
-                <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                  <a
-                    href="#security"
-                    className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 sm:w-auto"
-                  >
-                    Read the security model
-                    <ArrowRight className="size-4" />
-                  </a>
-                  <a
-                    href="#architecture"
-                    className="inline-flex h-10 w-full items-center justify-center rounded-lg border border-border bg-background/60 px-5 text-sm font-medium transition-colors hover:bg-accent sm:w-auto"
-                  >
-                    See the architecture
-                  </a>
-                </div>
-
-                <p className="mt-5 text-xs text-muted-foreground">
-                  Live demo and credentials ship with the authentication milestone.
-                </p>
-              </div>
+            <div className="flex flex-col items-start gap-3">
+              <a
+                href="#architecture"
+                className={cn(
+                  buttonVariants({ variant: "secondary", size: "lg" }),
+                  "bg-background text-foreground hover:bg-background/85",
+                )}
+              >
+                Read the security model
+                <ArrowRight className="size-4" />
+              </a>
+              <span className="font-mono text-[0.5rem] uppercase tracking-[0.14em] text-background/50">
+                Live demo ships with authentication
+              </span>
             </div>
           </div>
         </section>
