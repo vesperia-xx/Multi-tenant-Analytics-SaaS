@@ -427,17 +427,30 @@ es siempre la misma exista o no la cuenta.
 
 ## 8. Flujo de una petición de analítica
 
-1. La página server-side resuelve sesión y membresía (guard).
-2. Valida los filtros de la URL (`from`, `to`, `granularity`, `categoryId`) con Zod.
-3. Llama a `analytics.revenue(orgId, range)`, que ejecuta SQL parametrizado.
-4. PostgreSQL usa los índices compuestos de tenant.
-5. El resultado se serializa al cliente; Recharts solo dibuja.
-6. La exportación CSV/PDF reutiliza **la misma** función de datos, de modo que el archivo y el
-   gráfico no pueden discrepar.
+1. `/app/[orgSlug]` resuelve sesión y membresía con `requireOrgContext` (bloqueante: `instant = false`).
+2. `parseAnalyticsQuery` normaliza `range`, `from`, `to` y `granularity`. Cada campo cae a su valor
+   por defecto por separado; un rango inválido nunca rompe la página.
+3. `resolveRange` calcula los límites **en la zona horaria del workspace** (`organizations.timezone`)
+   y la ventana anterior de la misma longitud. El rango personalizado se limita a 400 días y nunca
+   llega al futuro.
+4. `getDashboardData` ejecuta en paralelo cinco consultas crudas parametrizadas (`$queryRaw`), todas
+   con `organization_id` como primer filtro:
+   - totales actuales y anteriores (ingresos, pedidos, ticket medio, clientes nuevos),
+   - serie de ingresos con `generate_series` + `date_trunc` sobre `placed_at AT TIME ZONE tz`,
+   - pedidos por estado, top productos y `traffic_daily`.
+5. PostgreSQL resuelve los índices compuestos `(organization_id, ...)`; la serie rellena días sin
+   ventas con ceros, así el gráfico no miente por omisión.
+6. Los datos se serializan ya formateados al cliente; Recharts solo dibuja. No hay aritmética de
+   negocio en el navegador.
+7. La exportación CSV/PDF (Fase 6) reutilizará **las mismas** funciones, de modo que el archivo y el
+   gráfico no puedan discrepar.
 
-Con Cache Components activo, la lectura de sesión ocurre en request time detrás de un
-`<Suspense>`; los datos derivados del tenant pueden cachearse con tags por organización y
-revalidarse tras una mutación.
+Los filtros son URLs: enlaces para presets y granularidad, y un formulario `GET` nativo para el
+rango personalizado. La página funciona sin JavaScript antes de hidratar.
+
+`prisma/seed.ts` provisiona filas reales (productos, clientes, pedidos, tráfico) para un workspace
+concreto y es idempotente por workspace. El dashboard nunca lee fixtures: si no hay filas, muestra
+el estado vacío.
 
 ---
 
@@ -468,7 +481,7 @@ revalidarse tras una mutación.
 | 1 | Scaffold, esquema, migración, sistema de diseño, landing | ✅ |
 | 2 | Sesiones, registro, login, reset, rutas protegidas | ✅ |
 | 3 | Organizaciones, invitaciones, selector, guards RBAC | ✅ |
-| 4 | KPIs y gráficos desde SQL real | ⏳ |
+| 4 | KPIs y gráficos desde SQL real | ✅ |
 | 5 | Tablas de pedidos, clientes y productos | ⏳ |
 | 6 | Reportes CSV y PDF | ⏳ |
 | 7 | Audit log con diffs | ⏳ |

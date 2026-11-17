@@ -43,7 +43,7 @@ export async function WorkspaceShell({
   const canManage = can(context.membership.role, "member:invite");
 
   const navItems = [
-    { index: "01", label: "Overview", href: `/app/${context.organization.slug}` },
+    { index: "01", label: "Dashboard", href: `/app/${context.organization.slug}` },
     ...(canManage
       ? [
           {

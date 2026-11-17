@@ -4,7 +4,7 @@
 
 Vortex Metrics gives every organization its own workspace, its own data and its own permissions. Dashboards, tables and exports are powered by real SQL aggregates over a seeded PostgreSQL dataset — no mocks at runtime, no client-side math.
 
-> **Status:** Phase 3 of 10 — organizations, memberships, invitations, org switcher and RBAC guards.
+> **Status:** Phase 4 of 10 — dashboard KPIs and analytics charts from real SQL.
 > See the [roadmap](#roadmap) for what ships next.
 
 ---
@@ -74,7 +74,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the ERD, RBAC matrix and 
 | 1 | Setup, architecture, database schema, design system, marketing shell | ✅ |
 | 2 | Authentication: register, login, logout, password reset, sessions | ✅ |
 | 3 | Organizations, memberships, invitations, org switcher, RBAC guards | ✅ |
-| 4 | Dashboard KPIs and analytics charts from real SQL | ⏳ |
+| 4 | Dashboard KPIs and analytics charts from real SQL | ✅ |
 | 5 | Orders, customers and products tables (search, filters, sorting, pagination) | ⏳ |
 | 6 | CSV and PDF reports | ⏳ |
 | 7 | Audit log with before/after diffs | ⏳ |
@@ -123,16 +123,26 @@ npm run db:migrate     # prisma migrate dev
 npm run db:generate    # prisma generate (also runs on build)
 ```
 
-### 5. Start the app
+### 5. Optional: give your workspace something to measure
+
+Register an account, then seed that workspace with six months of orders, customers, products and
+traffic:
+
+```bash
+npm run db:seed -- --org acme-inc
+```
+
+The dashboard always reads PostgreSQL — the seed only provisions rows. Phase 8 adds the dedicated
+Acme/Nordwind demo tenants and the read-only demo mode; this script can be re-run at any time and
+replaces only the target workspace's analytics rows.
+
+### 6. Start the app
 
 ```bash
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
-
-> Seed data arrives in Phase 8 with the demo tenants. Until then, creating an account also
-> creates a workspace you own, which is enough to exercise the auth flows.
 
 ## Scripts
 
@@ -147,7 +157,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `npm run db:migrate` | Create and apply a migration in development |
 | `npm run db:deploy` | Apply pending migrations (CI / production) |
 | `npm run db:reset` | Drop, re-migrate, regenerate and reseed |
-| `npm run db:seed` | Run the seed script |
+| `npm run db:seed` | Seed one workspace (`-- --org <slug>` or `-- --email <address>`) |
 | `npm run db:studio` | Prisma Studio |
 | `npm run db:check` | Verify connectivity, tables and trigram indexes |
 
@@ -163,12 +173,13 @@ src/
   app/
     (auth)/               login, register, forgot-password, reset-password, invite/[token]
     app/                  account area: all workspaces and active sessions
-    app/[orgSlug]/        tenant-scoped shell, overview and settings
+    app/[orgSlug]/        tenant-scoped shell, analytics dashboard and settings
     page.tsx              Marketing landing page
     layout.tsx            Root layout, theme provider, toasts
     globals.css           Design tokens (oklch) + utilities
   components/
     app/                  Account overview, workspace shell, members and invitations
+    app/analytics/        KPI cards, Recharts panels, filters, empty states
     auth/                 Auth shell, forms, feedback, invitation acceptance
     brand/                Logo
     layout/               Marketing header, mobile nav, footer
@@ -177,6 +188,7 @@ src/
     ui/                   Button, Card, Badge, Input, Field, Toaster
   lib/                    Utilities, env validation, Zod schemas, permission matrix
   server/
+    analytics/            Range resolution and tenant-scoped SQL aggregates
     auth/                 Password hashing, sessions, rate limits, Server Actions
     db/client.ts          Prisma client with pg / Neon adapters
     email/                Resend delivery (optional)
@@ -261,6 +273,34 @@ redeemed by someone else.
 development or demo mode — shown in the workspace settings to the **inviter**, who already holds
 `member:invite`. It is never shown to the invitee through this screen, unlike reset links, which are
 only surfaced for seeded demo accounts.
+
+## Analytics
+
+Every figure on the dashboard is a SQL aggregate over the workspace's own rows. There is no
+client-side arithmetic and no fixture: if the range is empty, the UI says so.
+
+| Figure | Definition |
+| --- | --- |
+| **Revenue** | `SUM(total_cents)` of `PAID` orders only |
+| **Orders** | All orders except `CANCELLED` |
+| **Average order** | `AVG(total_cents)` of paid orders |
+| **New customers** | `customers.created_at` inside the range |
+| **Orders by status** | Count and share per status, including cancelled |
+| **Top products** | `order_items` joined to products, cancelled orders excluded |
+| **Traffic / conversion** | `traffic_daily` totals; conversion = paid orders ÷ sessions |
+
+Ranges resolve in the workspace's timezone (`organizations.timezone`), not the server's. The URL
+carries `range` (`7d`, `30d`, `90d`, `12m`, `custom`), optional `from`/`to` and `granularity`
+(`day`, `week`, `month`); invalid values fall back per field instead of breaking the page. Custom
+ranges are capped at 400 days and never reach the future. Presets, granularity and the custom form
+are plain links and a native `GET` form, so the dashboard works before hydration.
+
+Each KPI compares against the immediately preceding window of the same length. With no baseline
+the delta reads "No baseline" rather than a misleading `+100%`.
+
+The revenue series uses a `generate_series` spine so empty days still produce a point, and
+`date_trunc` runs on `placed_at AT TIME ZONE <workspace zone>`. All queries filter by
+`organization_id`, which is the first column of the relevant composite indexes.
 
 ## Deployment
 
