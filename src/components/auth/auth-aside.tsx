@@ -21,7 +21,7 @@ export function AuthAside() {
   ];
 
   return (
-    <aside className="hidden flex-col justify-between border-l border-border bg-foreground p-10 text-background lg:flex xl:p-14">
+    <aside className="hidden flex-col justify-between border-l border-border bg-foreground p-10 text-background transition-all duration-300 ease-in-out lg:flex xl:p-14 hover:bg-foreground/95 hover:border-foreground/40">
       <div>
         <p className="flex items-center gap-2 font-mono text-[0.5625rem] uppercase tracking-[0.22em] text-background/55">
           <span className="inline-block size-1.5 bg-background/70" />

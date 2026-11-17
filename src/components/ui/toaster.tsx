@@ -17,8 +17,10 @@ export function Toaster() {
         style: {
           borderRadius: "3px",
           fontFamily: "var(--font-instrument-sans), ui-sans-serif, system-ui, sans-serif",
+          transition: "all 150ms ease-in-out",
         },
       }}
+      className="font-sans"
     />
   );
 }

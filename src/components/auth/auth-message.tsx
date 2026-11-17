@@ -16,10 +16,10 @@ function AuthMessage({
     <div
       role={tone === "error" ? "alert" : "status"}
       className={cn(
-        "border-l-2 px-3 py-2.5 text-sm leading-relaxed",
+        "border-l-2 px-3 py-2.5 text-sm leading-relaxed rounded-r-[2px] transition-all duration-150 ease-in-out",
         tone === "error"
-          ? "border-destructive bg-destructive/5 text-destructive"
-          : "border-primary bg-primary/5 text-foreground",
+          ? "border-destructive bg-destructive/5 text-destructive hover:bg-destructive/10"
+          : "border-primary bg-primary/5 text-foreground hover:bg-primary/10",
         className,
       )}
     >
