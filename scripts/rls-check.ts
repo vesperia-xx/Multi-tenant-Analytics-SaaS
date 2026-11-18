@@ -142,6 +142,10 @@ async function main() {
     }
   } finally {
     await client.query("RESET ROLE").catch(() => undefined);
+    await client
+      .query("REVOKE ALL ON orders, order_items, customers, products, categories, traffic_daily, audit_logs FROM vortex_rls_check")
+      .catch(() => undefined);
+    await client.query("REVOKE ALL ON SCHEMA public FROM vortex_rls_check").catch(() => undefined);
     await client.query("DROP ROLE IF EXISTS vortex_rls_check").catch(() => undefined);
     await client.end();
     await prisma.$disconnect();

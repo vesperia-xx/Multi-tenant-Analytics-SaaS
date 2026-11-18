@@ -4,8 +4,8 @@
 
 Vortex Metrics gives every organization its own workspace, its own data and its own permissions. Dashboards, tables and exports are powered by real SQL aggregates over a seeded PostgreSQL dataset — no mocks at runtime, no client-side math.
 
-> **Status:** Phase 9 of 10 — RLS with FORCE, measured query plans and security headers.
-> See the [roadmap](#roadmap) for what ships next.
+> **Status:** Phase 10 of 10 — CI/CD, Playwright E2E and the Vercel + Neon deployment guide.
+> See the [roadmap](#roadmap) for the shipping sequence.
 
 ---
 
@@ -80,7 +80,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the ERD, RBAC matrix and 
 | 7 | Audit log with before/after diffs | ✅ |
 | 8 | Seeded demo tenants + read-only demo mode | ✅ |
 | 9 | Performance work, PostgreSQL RLS with FORCE, security hardening | ✅ |
-| 10 | Tests, CI/CD, Vercel + Neon deployment, docs | ⏳ |
+| 10 | Tests, CI/CD, Vercel + Neon deployment, docs | ✅ |
 
 ## Local development
 
@@ -151,6 +151,21 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+### 7. Run the E2E suite
+
+The Playwright suite uses the seeded demo tenants and runs against the production build, just like
+CI. Build once, then run it:
+
+```bash
+npx playwright install chromium   # once, if you do not use Edge
+npm run build
+npm run test:e2e
+```
+
+On a machine with Edge installed, `PLAYWRIGHT_CHANNEL=msedge` reuses it instead of downloading
+Chromium. The suite runs serially because the public demo account and its audit ledger are shared
+state, and it starts its own `next start` server on port 3000 — stop `npm run dev` first.
+
 ## Scripts
 
 | Script | What it does |
@@ -161,6 +176,8 @@ Open [http://localhost:3000](http://localhost:3000).
 | `npm run lint` | ESLint (flat config, Next.js rules) |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run test` | Vitest (unit + component) |
+| `npm run test:e2e` | Playwright E2E against the production build (run `npm run build` first) |
+| `npm run test:e2e:ui` | Playwright interactive mode |
 | `npm run db:migrate` | Create and apply a migration in development |
 | `npm run db:deploy` | Apply pending migrations (CI / production) |
 | `npm run db:reset` | Drop, re-migrate, regenerate and reseed |
@@ -173,9 +190,16 @@ Open [http://localhost:3000](http://localhost:3000).
 ## Project structure
 
 ```
+.github/workflows/
+  ci.yml                  Postgres service, migrations, seed, RLS, tests, build, E2E
+  deploy.yml              Optional tag/manual Vercel CLI deploy
+e2e/                      Playwright specs: demo, tables, auth, exports, security
+docs/
+  architecture.md         Architecture and decisions (Spanish)
+  deploy.md               Vercel + Neon production guide
 prisma/
   schema.prisma           14-model data model (source of truth)
-  migrations/             SQL migrations, including pg_trgm indexes
+  migrations/             SQL migrations, including pg_trgm + RLS
   seed.ts                 Demo tenants, editable workspace seed, audit fixtures
 scripts/
   db-check.ts             Connectivity + table, index, RLS and policy smoke test
@@ -186,6 +210,7 @@ src/
     (auth)/               login, register, forgot-password, reset-password, invite/[token]
     app/                  account area: all workspaces and active sessions
     app/[orgSlug]/        tenant-scoped shell, dashboard, tables, audit and settings
+    api/cron/             protected daily housekeeping endpoint
     api/org/[orgSlug]/    authenticated JSON endpoints and CSV/PDF exports
     page.tsx              Marketing landing page
     layout.tsx            Root layout, theme provider, toasts
@@ -214,11 +239,14 @@ src/
     db/tenant.ts          Transaction-scoped RLS context (`withTenant`)
     email/                Resend delivery (optional)
     exports/              CSV/PDF HTTP helpers and the printed report
+    housekeeping.ts       Cron cleanup for expired sessions, tokens and invitations
     orders/               Order list and detail queries
     org/                  Tenant context, invitations, roles, demo guard and Server Actions
     products/             Product and category queries
   proxy.ts                Optimistic cookie check for /app/*
   generated/prisma/       Generated Prisma client (gitignored)
+playwright.config.ts      E2E browser, web server and artifact settings
+vercel.json               Framework + daily cron schedule
 ```
 
 ## Demo mode
@@ -488,6 +516,19 @@ an action filter, a date range and pagination. `/audit/[logId]` shows the field-
 Diffs are computed by `src/lib/diff.ts`, a pure function shared by the page and the unit tests, so
 the UI never reinterprets a snapshot on its own.
 
+## Testing
+
+| Layer | What it covers |
+| --- | --- |
+| Vitest (88 tests) | Validation schemas, diff engine, CSV escaping, security headers, cron auth and component behaviour |
+| Playwright (9 tests / 5 specs) | Demo one-click, read-only settings, workspace switcher, tables, order detail, auth/write flows, audit diff, CSV/PDF downloads and security headers |
+| `npm run db:rls` | Tenant policies with a temporary non-superuser role, including a cross-tenant predicate and a direct `DELETE` on the audit ledger |
+| `npm run db:explain` | `EXPLAIN (ANALYZE, BUFFERS)` for the dashboard and table query shapes |
+
+The E2E suite runs serially on purpose: the demo account and its audit ledger are shared state.
+`e2e/global-setup.ts` clears rate-limit windows and fails with a clear message when the demo seed is
+missing.
+
 ## Deployment
 
 The target platform is **Vercel + Neon Postgres**:
@@ -506,7 +547,22 @@ For a public preview, run `npm run db:seed` with `DATABASE_URL` pointed at the p
 database, then set both demo flags to `true`. The seed is idempotent, so the same command restores
 the demo after a reset.
 
-Step-by-step instructions will be added in Phase 10 (`docs/deploy.md`).
+### CI/CD
+
+`.github/workflows/ci.yml` runs on every push and pull request against a disposable PostgreSQL 16
+service: migrations, demo seed, `db:check`, `db:rls`, lint, typecheck, Vitest, production build and
+Playwright E2E. The Playwright report is uploaded when a test fails.
+
+`.github/workflows/deploy.yml` is the optional tag/manual deploy path through the Vercel CLI; the
+default production path is Vercel's Git integration. It requires `VERCEL_TOKEN`, `VERCEL_ORG_ID` and
+`VERCEL_PROJECT_ID` repository secrets.
+
+`vercel.json` registers a daily housekeeping cron at `/api/cron/housekeeping`, protected by
+`CRON_SECRET`. It removes expired sessions, old reset tokens, stale rate-limit windows and old
+invitations; the append-only audit ledger is never touched.
+
+Full instructions, environment variables, Neon role requirements, smoke checks, rollback and
+troubleshooting live in [`docs/deploy.md`](docs/deploy.md).
 
 ## Notes on the Next.js version
 

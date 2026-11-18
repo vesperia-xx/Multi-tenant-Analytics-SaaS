@@ -675,6 +675,9 @@ Petición de escritura
 | Trigger append-only en `audit_logs` | Confiar solo en la aplicación | Ni un `DELETE` directo puede reescribir el ledger
 | Demo bloquea organización y cuenta | Solo `organizations.is_demo` | Evita que la cuenta compartida escriba en un workspace antiguo
 | Seed de demo idempotente | Datos generados al vuelo | El visitante ve SQL real y el reset restaura el mismo estado
+| Playwright en serie | Tests en paralelo | La cuenta demo y su ledger son estado compartido
+| Cron con bearer y comparación constante | Endpoint público de mantenimiento | No se puede borrar sesiones o tokens sin el secreto
+| Housekeeping no toca `audit_logs` | Podar el ledger | La auditoría es append-only por diseño
 | Sin microfrontends | Varias apps | Un solo dominio, un solo deploy, un solo modelo de sesión |
 
 ---
@@ -692,7 +695,7 @@ Petición de escritura
 | 7 | Audit log con diffs | ✅ |
 | 8 | Seed de Acme y Nordwind + modo demo de solo lectura | ✅ |
 | 9 | RLS con `FORCE`, rendimiento medido y hardening | ✅ |
-| 10 | Tests, CI/CD, despliegue en Vercel + Neon | ⏳ |
+| 10 | Tests, CI/CD, despliegue en Vercel + Neon | ✅ |
 
 ---
 
@@ -701,8 +704,8 @@ Petición de escritura
 | Entorno | Base de datos | Notas |
 | --- | --- | --- |
 | Local | Docker `postgres:16-alpine` en el puerto **5434** | Adaptador `pg`; volumen persistente |
-| CI | Servicio Postgres efímero | Migraciones con `prisma migrate deploy` |
-| Producción | Neon (pooled + direct) | Adaptador `@prisma/adapter-neon`; PDF en runtime Node |
+| CI | Servicio Postgres efímero | Migraciones, seed, `db:rls`, Vitest, build y Playwright |
+| Producción | Neon (pooled + direct) | Adaptador `@prisma/adapter-neon`; PDF en runtime Node; cron diario |
 
 `src/server/db/client.ts` elige el adaptador según el host de `DATABASE_URL`
 (`*.neon.tech` → Neon) o la variable `DATABASE_DRIVER=neon`.
@@ -711,3 +714,50 @@ Para que RLS se aplique, el rol de `DATABASE_URL` no puede ser `SUPERUSER` ni te
 El rol por defecto de Neon cumple; el `postgres` local es superusuario y por eso `npm run db:rls`
 verifica las políticas con un rol temporal sin privilegios. `FORCE ROW LEVEL SECURITY` cubre también
 al dueño de las tablas.
+
+---
+
+## 12. Entrega continua y despliegue
+
+### 12.1 Pipeline de CI
+
+`.github/workflows/ci.yml` se ejecuta en cada push a `main` y en cada pull request, contra un
+servicio PostgreSQL 16 efímero:
+
+1. `npm ci`
+2. `npm run db:deploy` (migraciones, incluida RLS)
+3. `npm run db:seed` (Acme, Nordwind y el ledger)
+4. `npm run db:check` (tablas, índices trigram, flags y políticas RLS)
+5. `npm run db:rls` (rol no-superusuario temporal: aislamiento + append-only)
+6. `npm run lint`
+7. `npm run typecheck`
+8. `npm run test` (Vitest)
+9. `npm run build`
+10. `npx playwright install --with-deps chromium`
+11. `npm run test:e2e` (Playwright contra el build de producción)
+
+Si Playwright falla, el workflow sube `playwright-report/` como artefacto. La suite usa un solo
+worker porque la cuenta demo y el ledger son estado compartido.
+
+### 12.2 Estrategia de tests
+
+| Capa | Qué cubre |
+| --- | --- |
+| Vitest (88) | Esquemas Zod, diff de auditoría, CSV, cabeceras de seguridad, auth de cron y componentes |
+| Playwright (9 tests / 5 specs) | Demo de un clic, solo lectura, switcher, tablas, detalle, registro/escritura, diff de auditoría, CSV/PDF y cabeceras |
+| `npm run db:rls` | Políticas con rol no-superusuario, predicado cross-tenant y `DELETE` directo bloqueado |
+| `npm run db:explain` | Planes `EXPLAIN (ANALYZE, BUFFERS)` de dashboard y tablas |
+
+`e2e/global-setup.ts` limpia los contadores de rate limit y falla con un mensaje explícito si falta
+el seed. Los specs no dependen de un orden global: cada uno inicia sesión o registra su propio owner.
+
+### 12.3 Despliegue
+
+`docs/deploy.md` contiene la guía completa de Vercel + Neon: variables, rol de base de datos,
+migraciones, seed, modo demo, cron, smoke checks, rollback y troubleshooting. `vercel.json` registra
+el cron diario `/api/cron/housekeeping`, protegido con `CRON_SECRET`; limpia sesiones expiradas,
+tokens de reset antiguos, ventanas de rate limit y invitaciones caducadas, pero nunca toca
+`audit_logs`.
+
+`.github/workflows/deploy.yml` es la vía opcional de despliegue por tag/manual con Vercel CLI. La vía
+por defecto es la integración Git de Vercel.
