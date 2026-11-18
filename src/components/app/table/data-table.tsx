@@ -136,18 +136,34 @@ export function DataTable<Row extends Record<string, unknown>>({
 
           <tbody className={cn("transition-opacity", isFetching && "opacity-50")}>
             {rows.length === 0 ? (
-              <tr>
-                <td colSpan={columns.length} className="px-4 py-12 text-center">
-                  <p className="font-mono text-[0.5rem] uppercase tracking-[0.18em] text-muted-foreground">
-                    {emptyTitle}
-                  </p>
-                  {emptyHint ? (
-                    <div className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                      {emptyHint}
+              isFetching ? (
+                <tr>
+                  <td colSpan={columns.length} className="px-4 py-10">
+                    <div className="flex flex-col gap-3">
+                      {[0, 1, 2, 3, 4].map((row) => (
+                        <div
+                          key={row}
+                          className="h-5 animate-pulse rounded-[2px] bg-muted"
+                          style={{ width: `${88 - row * 12}%` }}
+                        />
+                      ))}
                     </div>
-                  ) : null}
-                </td>
-              </tr>
+                  </td>
+                </tr>
+              ) : (
+                <tr>
+                  <td colSpan={columns.length} className="px-4 py-12 text-center">
+                    <p className="font-mono text-[0.5rem] uppercase tracking-[0.18em] text-muted-foreground">
+                      {emptyTitle}
+                    </p>
+                    {emptyHint ? (
+                      <div className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                        {emptyHint}
+                      </div>
+                    ) : null}
+                  </td>
+                </tr>
+              )
             ) : (
               table.getRowModel().rows.map((row) => (
                 <tr
@@ -182,7 +198,7 @@ export function DataTable<Row extends Record<string, unknown>>({
           aria-live="polite"
           className="tnum font-mono text-[0.5625rem] uppercase tracking-[0.14em] text-muted-foreground"
         >
-          {total === 0 ? "0 rows" : `${start}–${end} of ${total}`}
+          {isFetching && total === 0 ? "Loading…" : total === 0 ? "0 rows" : `${start}–${end} of ${total}`}
         </p>
 
         <div className="flex flex-wrap items-center gap-2">
