@@ -4,7 +4,7 @@
 
 Vortex Metrics gives every organization its own workspace, its own data and its own permissions. Dashboards, tables and exports are powered by real SQL aggregates over a seeded PostgreSQL dataset — no mocks at runtime, no client-side math.
 
-> **Status:** Phase 4 of 10 — dashboard KPIs and analytics charts from real SQL.
+> **Status:** Phase 5 of 10 — orders, customers and products tables with search, filters, sorting and pagination.
 > See the [roadmap](#roadmap) for what ships next.
 
 ---
@@ -75,7 +75,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the ERD, RBAC matrix and 
 | 2 | Authentication: register, login, logout, password reset, sessions | ✅ |
 | 3 | Organizations, memberships, invitations, org switcher, RBAC guards | ✅ |
 | 4 | Dashboard KPIs and analytics charts from real SQL | ✅ |
-| 5 | Orders, customers and products tables (search, filters, sorting, pagination) | ⏳ |
+| 5 | Orders, customers and products tables (search, filters, sorting, pagination) | ✅ |
 | 6 | CSV and PDF reports | ⏳ |
 | 7 | Audit log with before/after diffs | ⏳ |
 | 8 | Seeded demo tenants + read-only demo mode | ⏳ |
@@ -173,13 +173,18 @@ src/
   app/
     (auth)/               login, register, forgot-password, reset-password, invite/[token]
     app/                  account area: all workspaces and active sessions
-    app/[orgSlug]/        tenant-scoped shell, analytics dashboard and settings
+    app/[orgSlug]/        tenant-scoped shell, analytics dashboard, tables and settings
+    api/org/[orgSlug]/    authenticated JSON endpoints for the interactive tables
     page.tsx              Marketing landing page
     layout.tsx            Root layout, theme provider, toasts
     globals.css           Design tokens (oklch) + utilities
   components/
     app/                  Account overview, workspace shell, members and invitations
     app/analytics/        KPI cards, Recharts panels, filters, empty states
+    app/customers/        Customer table view
+    app/orders/           Order table view
+    app/products/         Product table view
+    app/table/            Shared TanStack Table shell, filters and skeletons
     auth/                 Auth shell, forms, feedback, invitation acceptance
     brand/                Logo
     layout/               Marketing header, mobile nav, footer
@@ -190,9 +195,12 @@ src/
   server/
     analytics/            Range resolution and tenant-scoped SQL aggregates
     auth/                 Password hashing, sessions, rate limits, Server Actions
+    customers/            Customer list query
     db/client.ts          Prisma client with pg / Neon adapters
     email/                Resend delivery (optional)
+    orders/               Order list and detail queries
     org/                  Tenant context, invitations, roles and Server Actions
+    products/             Product and category queries
   proxy.ts                Optimistic cookie check for /app/*
   generated/prisma/       Generated Prisma client (gitignored)
 ```
@@ -301,6 +309,30 @@ the delta reads "No baseline" rather than a misleading `+100%`.
 The revenue series uses a `generate_series` spine so empty days still produce a point, and
 `date_trunc` runs on `placed_at AT TIME ZONE <workspace zone>`. All queries filter by
 `organization_id`, which is the first column of the relevant composite indexes.
+
+## Tables
+
+`/app/[orgSlug]/orders`, `/customers` and `/products` share one table shell: URL-driven filters,
+server-side sorting and pagination, and a client cache keyed by the full query string.
+
+| Concern | Implementation |
+| --- | --- |
+| Filters | Free-text search, status/date/country/category filters — all in the URL |
+| Sorting | Whitelisted columns per table; the server interpolates the column name from a map, never from input |
+| Pagination | `LIMIT`/`OFFSET` plus `COUNT(*) OVER()` in the same query, so the total is free |
+| Search | `ILIKE '%term%'` on columns backed by `pg_trgm` GIN indexes |
+| Fetching | Authenticated `GET /api/org/[orgSlug]/{orders,customers,products}` Route Handlers |
+| Client state | TanStack Query (keys include every param) + TanStack Table v9 for the column/row model |
+| Security | Each handler re-resolves the session and membership; anonymous → 401, foreign tenant → 404 |
+| Caching | JSON responses are `private, no-store`; no tenant data is shared between requests |
+
+Invalid parameters never 500: each field falls back on its own, page size clamps to 5–50 and the
+sort key falls back to the table's default. The order number links to a read-only detail page with
+line items and totals.
+
+TanStack Table v9 is used only for the header/row model; sorting and pagination are manual because
+PostgreSQL owns the page. That keeps one source of truth and avoids sorting 10 of 822 rows in the
+browser.
 
 ## Deployment
 

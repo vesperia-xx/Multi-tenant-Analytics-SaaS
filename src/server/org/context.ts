@@ -7,7 +7,7 @@ import { Role } from "@/generated/prisma/enums";
 import type { Permission } from "@/lib/permissions";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/server/db/client";
-import { requireViewer, type Viewer } from "@/server/auth/session";
+import { getViewer, requireViewer, type Viewer } from "@/server/auth/session";
 
 export type OrgContext = {
   viewer: Viewer;
@@ -99,4 +99,33 @@ export async function resolveOrgContext(orgSlug: string): Promise<OrgContext | n
 
 export function hasPermission(context: OrgContext, permission: Permission): boolean {
   return can(context.membership.role, permission);
+}
+
+/**
+ * Route Handlers get `null` semantics instead of redirects: the caller decides
+ * the status code — anonymous callers get 401, a foreign tenant gets 404.
+ */
+export type ApiOrgContext =
+  | { ok: true; context: OrgContext }
+  | { ok: false; reason: "unauthorized" | "not-found" };
+
+export async function getApiOrgContext(orgSlug: string): Promise<ApiOrgContext> {
+  const viewer = await getViewer();
+  if (!viewer) return { ok: false, reason: "unauthorized" };
+
+  const membership = await loadMembership(viewer.user.id, orgSlug);
+  if (!membership) return { ok: false, reason: "not-found" };
+
+  return {
+    ok: true,
+    context: {
+      viewer,
+      organization: membership.organization,
+      membership: {
+        id: membership.id,
+        role: membership.role,
+        createdAt: membership.createdAt,
+      },
+    },
+  };
 }

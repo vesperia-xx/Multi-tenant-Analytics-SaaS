@@ -379,8 +379,8 @@ drift, y la extensión se crea en la migración inicial.
 
 ### 6.3 Estrategia de paginación
 
-- Tablas: paginación por offset con `LIMIT`/`OFFSET` acotado y un `COUNT(*)` de la misma
-  consulta filtrada (el dataset sembrado es finito y el usuario necesita el total).
+- Tablas: paginación por offset con `LIMIT`/`OFFSET` acotado. El total sale de la **misma**
+  consulta con `COUNT(*) OVER ()`, así que no hay un segundo viaje para contar.
 - Series temporales: agregación por día/semana/mes con `date_trunc`.
 - Comparación de periodos: dos rangos en la misma consulta mediante CTE, para que el KPI y su
   variación salgan de una sola pasada.
@@ -452,6 +452,39 @@ rango personalizado. La página funciona sin JavaScript antes de hidratar.
 concreto y es idempotente por workspace. El dashboard nunca lee fixtures: si no hay filas, muestra
 el estado vacío.
 
+### 8.1 Tablas interactivas
+
+```
+URL (?q=&status=&sort=&direction=&page=&pageSize=)
+        │
+        ▼
+Page RSC: requireOrgContext → monta la vista cliente en <Suspense>
+        │
+        ▼
+TanStack Query: GET /api/org/[orgSlug]/orders?<query completa>
+        │
+        ▼
+Route Handler: getApiOrgContext (401/404) → Zod → SQL con organization_id
+        │
+        ▼
+{ rows, total, page, pageSize } → TanStack Table dibuja columnas y filas
+```
+
+Decisiones:
+
+- **Estado en la URL**, no en memoria: filtros, orden y página se pueden compartir, recargar y
+  navegar con atrás/adelante. Cada campo inválido cae a su valor por defecto por separado.
+- **Route Handlers para lecturas**, Server Actions para escrituras. El handler no confía en el
+  cliente: repite sesión y membresía, y responde 401 si no hay sesión o 404 si el slug no es suyo.
+- **Orden whitelisted**: `sort` se resuelve contra un mapa `columna → expresión SQL`; el valor del
+  usuario solo elige una clave del mapa. `direction` es `asc | desc`.
+- **Una sola consulta por página** con `COUNT(*) OVER ()`, `LIMIT`/`OFFSET`; `pageSize` se acota a
+  5–50 y una página fuera de rango se corrige en servidor.
+- **TanStack Table v9 solo modela** columnas y filas; el orden y la paginación son del servidor,
+  porque ordenar 10 de 822 filas en el navegador sería una mentira.
+- **Búsqueda** `ILIKE '%x%'` sobre `orders.number`, `customers.name/email` y `products.name/sku`,
+  todos con índice GIN trigram (6.2).
+
 ---
 
 ## 9. Decisiones y alternativas descartadas
@@ -469,6 +502,9 @@ el estado vacío.
 | Expiración absoluta de sesión | Expiración deslizante | La cookie solo se reescribe en acciones/handlers; mantener el modelo explícito
 | Invitación ligada al email | Enlace de un solo uso sin email | Un enlace reenviado no puede canjearse desde otra cuenta
 | Matriz de permisos compartida | Checks duplicados en UI y servidor | Una sola fuente evita que el botón y el endpoint discrepen
+| Estado de tabla en la URL | Estado local del cliente | Filtros compartibles, recargables y con atrás/adelante
+| Route Handlers para lecturas | Server Actions para todo | Respuestas JSON privadas, sin semántica de mutación
+| Orden por mapa whitelisted | Interpolar `sort` | El input solo elige una clave; nunca llega a SQL
 | PDF con `@react-pdf/renderer` | Puppeteer / HTML print | Runtime Node sin binarios de navegador, apto para Vercel |
 | Sin microfrontends | Varias apps | Un solo dominio, un solo deploy, un solo modelo de sesión |
 
@@ -482,7 +518,7 @@ el estado vacío.
 | 2 | Sesiones, registro, login, reset, rutas protegidas | ✅ |
 | 3 | Organizaciones, invitaciones, selector, guards RBAC | ✅ |
 | 4 | KPIs y gráficos desde SQL real | ✅ |
-| 5 | Tablas de pedidos, clientes y productos | ⏳ |
+| 5 | Tablas de pedidos, clientes y productos | ✅ |
 | 6 | Reportes CSV y PDF | ⏳ |
 | 7 | Audit log con diffs | ⏳ |
 | 8 | Seed de Acme y Nordwind + modo demo de solo lectura | ⏳ |

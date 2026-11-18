@@ -29,11 +29,15 @@ const PRODUCTS: Array<{ sku: string; name: string; priceCents: number; costCents
   { sku: "HOM-202", name: "Cast Iron Skillet", priceCents: 8_800, costCents: 4_100, category: 3 },
 ];
 
-const CUSTOMER_NAMES = [
-  "Ada Lovelace", "Bruno Marchetti", "Camille Duarte", "Daniel Okafor", "Elena Petrova",
-  "Farah Haddad", "Gabriel Ríos", "Hana Sato", "Iván Serrano", "Julia Novak",
-  "Kenji Watanabe", "Lucía Ferrer", "Mateo Silva", "Nadia Rahman", "Oliver Grant",
-  "Priya Nair", "Quentin Moreau", "Rosa Delgado", "Samir Khan", "Teresa Lima",
+const FIRST_NAMES = [
+  "Ada", "Bruno", "Camille", "Daniel", "Elena", "Farah", "Gabriel", "Hana", "Iván", "Julia",
+  "Kenji", "Lucía", "Mateo", "Nadia", "Oliver", "Priya", "Quentin", "Rosa", "Samir", "Teresa",
+];
+
+const LAST_NAMES = [
+  "Lovelace", "Marchetti", "Duarte", "Okafor", "Petrova", "Haddad", "Ríos", "Sato", "Serrano",
+  "Novak", "Watanabe", "Ferrer", "Silva", "Rahman", "Grant", "Nair", "Moreau", "Delgado", "Khan",
+  "Lima",
 ];
 
 const COUNTRIES = ["ES", "US", "DE", "FR", "GB", "PT", "MX", "AR", "IT", "NL"];
@@ -117,9 +121,14 @@ async function main() {
 
   const customers = await Promise.all(
     Array.from({ length: 60 }, (_, index) => {
-      const base = CUSTOMER_NAMES[index % CUSTOMER_NAMES.length]!;
-      const name = index < CUSTOMER_NAMES.length ? base : `${base} ${index + 1}`;
-      const handle = name.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "");
+      const first = FIRST_NAMES[index % FIRST_NAMES.length]!;
+      const last = LAST_NAMES[Math.floor(index / FIRST_NAMES.length) % LAST_NAMES.length]!;
+      const name = `${first} ${last}`;
+      const handle = name
+        .normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ".");
 
       return prisma.customer.create({
         data: {

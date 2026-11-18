@@ -44,10 +44,13 @@ export async function WorkspaceShell({
 
   const navItems = [
     { index: "01", label: "Dashboard", href: `/app/${context.organization.slug}` },
+    { index: "02", label: "Orders", href: `/app/${context.organization.slug}/orders` },
+    { index: "03", label: "Customers", href: `/app/${context.organization.slug}/customers` },
+    { index: "04", label: "Products", href: `/app/${context.organization.slug}/products` },
     ...(canManage
       ? [
           {
-            index: "02",
+            index: "05",
             label: "Members & settings",
             href: `/app/${context.organization.slug}/settings`,
           },

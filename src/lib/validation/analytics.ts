@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { dayField } from "./common";
+
 export const RANGE_PRESETS = ["7d", "30d", "90d", "12m", "custom"] as const;
 export const GRANULARITIES = ["day", "week", "month"] as const;
 
@@ -12,10 +14,6 @@ export type AnalyticsQuery = {
   to?: string;
   granularity?: Granularity;
 };
-
-const dayField = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD.");
 
 const schema = z.object({
   range: z.enum(RANGE_PRESETS).catch("30d"),
