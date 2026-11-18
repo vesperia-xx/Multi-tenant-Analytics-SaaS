@@ -1,5 +1,6 @@
 import { format, formatDistanceToNow } from "date-fns";
 import { ArrowRight, Plus } from "lucide-react";
+import { io } from "next/cache";
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
@@ -63,6 +64,9 @@ function SectionHeading({
 }
 
 export async function AccountOverview() {
+  // The pg driver runs SCRAM at connect time (randomBytes); keep it out of the prerender pass.
+  await io();
+
   const viewer = await requireViewer("/app");
   const readOnlyDemo = isReadOnlyAccount(viewer.user);
 
