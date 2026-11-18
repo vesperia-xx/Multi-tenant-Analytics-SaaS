@@ -4,7 +4,7 @@
 
 Vortex Metrics gives every organization its own workspace, its own data and its own permissions. Dashboards, tables and exports are powered by real SQL aggregates over a seeded PostgreSQL dataset — no mocks at runtime, no client-side math.
 
-> **Status:** Phase 7 of 10 — audit ledger with field-level before/after diffs.
+> **Status:** Phase 8 of 10 — seeded demo tenants and read-only demo mode.
 > See the [roadmap](#roadmap) for what ships next.
 
 ---
@@ -78,7 +78,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the ERD, RBAC matrix and 
 | 5 | Orders, customers and products tables (search, filters, sorting, pagination) | ✅ |
 | 6 | CSV and PDF reports | ✅ |
 | 7 | Audit log with before/after diffs | ✅ |
-| 8 | Seeded demo tenants + read-only demo mode | ⏳ |
+| 8 | Seeded demo tenants + read-only demo mode | ✅ |
 | 9 | Performance work, PostgreSQL RLS with FORCE, security hardening | ⏳ |
 | 10 | Tests, CI/CD, Vercel + Neon deployment, docs | ⏳ |
 
@@ -123,18 +123,25 @@ npm run db:migrate     # prisma migrate dev
 npm run db:generate    # prisma generate (also runs on build)
 ```
 
-### 5. Optional: give your workspace something to measure
+### 5. Provision the demo (and optionally your own workspace)
 
-Register an account, then seed that workspace with six months of orders, customers, products and
-traffic:
+With no arguments the seed provisions the two public demo tenants, their members, a pending
+invitation and a small audit ledger:
+
+```bash
+npm run db:seed
+```
+
+To fill an existing workspace instead, keep the target explicit:
 
 ```bash
 npm run db:seed -- --org acme-inc
+npm run db:seed -- --email owner@example.com
 ```
 
-The dashboard always reads PostgreSQL — the seed only provisions rows. Phase 8 adds the dedicated
-Acme/Nordwind demo tenants and the read-only demo mode; this script can be re-run at any time and
-replaces only the target workspace's analytics rows.
+The dashboard always reads PostgreSQL — the seed only provisions rows. Running it again replaces
+only the target workspace's analytics rows; the demo run also resets the demo members, invitation
+and audit ledger, so it is safe to repeat.
 
 ### 6. Start the app
 
@@ -157,7 +164,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `npm run db:migrate` | Create and apply a migration in development |
 | `npm run db:deploy` | Apply pending migrations (CI / production) |
 | `npm run db:reset` | Drop, re-migrate, regenerate and reseed |
-| `npm run db:seed` | Seed one workspace (`-- --org <slug>` or `-- --email <address>`) |
+| `npm run db:seed` | Seed the demo tenants, or one workspace with `-- --org <slug>` / `-- --email <address>` |
 | `npm run db:studio` | Prisma Studio |
 | `npm run db:check` | Verify connectivity, tables and trigram indexes |
 
@@ -167,6 +174,7 @@ Open [http://localhost:3000](http://localhost:3000).
 prisma/
   schema.prisma           14-model data model (source of truth)
   migrations/             SQL migrations, including pg_trgm indexes
+  seed.ts                 Demo tenants, editable workspace seed, audit fixtures
 scripts/
   db-check.ts             Connectivity + index smoke test
 src/
@@ -192,7 +200,7 @@ src/
     marketing/            Printed report specimen
     theme/                Theme provider and toggle
     ui/                   Button, Card, Badge, Input, Field, Toaster
-  lib/                    Utilities, env validation, Zod schemas, permission matrix
+  lib/                    Utilities, env validation, Zod schemas, permission matrix, demo state
   server/
     analytics/            Range resolution and tenant-scoped SQL aggregates
     audit/                Audit list, detail and action catalogue
@@ -202,11 +210,45 @@ src/
     email/                Resend delivery (optional)
     exports/              CSV/PDF HTTP helpers and the printed report
     orders/               Order list and detail queries
-    org/                  Tenant context, invitations, roles and Server Actions
+    org/                  Tenant context, invitations, roles, demo guard and Server Actions
     products/             Product and category queries
   proxy.ts                Optimistic cookie check for /app/*
   generated/prisma/       Generated Prisma client (gitignored)
 ```
+
+## Demo mode
+
+`npm run db:seed` provisions two independently populated tenants and one shared account:
+
+| Workspace | Currency / zone | Role for the demo account | Data |
+| --- | --- | --- | --- |
+| **Acme Inc** (`/app/acme-inc`) | USD · `America/New_York` | Owner | 781 orders, 68 customers, 10 products |
+| **Nordwind Studio** (`/app/nordwind-studio`) | EUR · `Europe/Oslo` | Admin | 659 orders, 54 customers, 10 products |
+
+**Login:** `demo@vortex.test` / `vortex-demo-1`. With `DEMO_MODE=true`, the login page shows both
+credentials and a one-click **Open the demo** action.
+
+The demo account is deliberately varied: Owner in Acme, Admin in Nordwind, and a Viewer and a
+Manager appear in the member lists. A pending invitation and seven or eight audit entries per
+tenant make the read-only settings and audit screens worth visiting.
+
+### What read-only means
+
+`DEMO_READ_ONLY=true` locks both seeded organisations **and the shared account**, so a preview
+cannot become a back door through a workspace created earlier. The guard lives in the Server
+Actions, not in the buttons:
+
+- settings edits, invitations, revocations, role changes and member removal return a clear error;
+- the demo account cannot create workspaces, accept invitations or revoke sessions;
+- password resets for the demo account are suppressed entirely, so one visitor cannot lock out
+  the rest (the generic response is unchanged);
+- **reads and exports stay available**: dashboards, tables, order detail, CSV/PDF and the audit
+  ledger all work. An export still writes its internal `report.exported` audit entry.
+
+The UI reflects the same rule: a read-only strip appears in the workspace, the profile becomes a
+value summary, member rows lose their controls and the invite form is replaced by an explanation.
+`DEMO_MODE` and `DEMO_READ_ONLY` are independent: the first advertises the demo, the second
+enforces it.
 
 ## Authentication and sessions
 
@@ -236,6 +278,7 @@ The workspace slug is derived from the name and reserved words (`app`, `login`, 
 - the reset link is printed to the server log in development;
 - in demo mode it is also returned to the UI **for seeded demo accounts only** (`users.is_demo`),
   never for a visitor's own account;
+- with `DEMO_READ_ONLY` enabled, reset tokens are not issued for the shared demo account at all;
 - the response to "forgot password" is always the same, so it never confirms whether an email exists.
 
 ## Multi-tenancy and roles
@@ -247,7 +290,7 @@ The workspace slug is derived from the name and reserved words (`app`, `login`, 
 | **Manager** | Analytics, orders and customers; products are read-only |
 | **Viewer** | Read-only, including exports |
 
-Memberships are per organization, so one user can be an Owner in one workspace and a Viewer in another — which is exactly what the demo account does.
+Memberships are per organization, so one user can be an Owner in one workspace and an Admin in another — which is exactly what the demo account does.
 
 ### Resolving the tenant
 
@@ -394,6 +437,10 @@ The target platform is **Vercel + Neon Postgres**:
 - `DIRECT_URL` → direct connection (used by Prisma migrations)
 - `NEXT_PUBLIC_APP_URL` → public base URL
 - Optional: `RESEND_API_KEY`, `EMAIL_FROM`, `CRON_SECRET`, `DEMO_MODE`, `DEMO_READ_ONLY`
+
+For a public preview, run `npm run db:seed` with `DATABASE_URL` pointed at the production
+database, then set both demo flags to `true`. The seed is idempotent, so the same command restores
+the demo after a reset.
 
 Step-by-step instructions will be added in Phase 10 (`docs/deploy.md`).
 

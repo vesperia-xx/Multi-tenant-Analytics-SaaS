@@ -12,12 +12,14 @@ export function InvitationRow({
   email,
   roleLabel,
   expiresAt,
+  readOnly = false,
 }: {
   slug: string;
   invitationId: string;
   email: string;
   roleLabel: string;
   expiresAt: string;
+  readOnly?: boolean;
 }) {
   const [state, action, pending] = useActionState(revokeInvitationAction, initialOrgState);
 
@@ -40,13 +42,19 @@ export function InvitationRow({
         ) : null}
       </div>
 
-      <form action={action}>
-        <input type="hidden" name="slug" value={slug} />
-        <input type="hidden" name="invitationId" value={invitationId} />
-        <Button type="submit" variant="outline" size="sm" disabled={pending}>
-          {pending ? "Revoking…" : "Revoke"}
-        </Button>
-      </form>
+      {readOnly ? (
+        <span className="font-mono text-[0.5rem] uppercase tracking-[0.14em] text-muted-foreground">
+          Seeded
+        </span>
+      ) : (
+        <form action={action}>
+          <input type="hidden" name="slug" value={slug} />
+          <input type="hidden" name="invitationId" value={invitationId} />
+          <Button type="submit" variant="outline" size="sm" disabled={pending}>
+            {pending ? "Revoking…" : "Revoke"}
+          </Button>
+        </form>
+      )}
     </li>
   );
 }

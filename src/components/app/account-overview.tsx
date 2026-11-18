@@ -9,8 +9,10 @@ import { describeUserAgent } from "@/lib/user-agent";
 import { revokeOtherSessionsAction, revokeSessionAction } from "@/server/auth/actions";
 import { requireViewer } from "@/server/auth/session";
 import { prisma } from "@/server/db/client";
+import { isReadOnlyAccount } from "@/server/org/demo";
 
 import { CreateWorkspaceForm } from "./create-workspace-form";
+import { DemoNotice } from "./demo-notice";
 
 const roleLabels: Record<Role, string> = {
   OWNER: "Owner",
@@ -62,6 +64,7 @@ function SectionHeading({
 
 export async function AccountOverview() {
   const viewer = await requireViewer("/app");
+  const readOnlyDemo = isReadOnlyAccount(viewer.user);
 
   const [memberships, sessions] = await Promise.all([
     prisma.membership.findMany({
@@ -77,6 +80,9 @@ export async function AccountOverview() {
         userId: viewer.user.id,
         revokedAt: null,
         expiresAt: { gt: new Date() },
+        // A shared demo session list would leak other visitors' IPs and grow
+        // without bound; the account only ever reveals the current device.
+        ...(readOnlyDemo ? { id: viewer.sessionId } : {}),
       },
       orderBy: { lastUsedAt: "desc" },
       select: {
@@ -91,7 +97,8 @@ export async function AccountOverview() {
   ]);
 
   const firstName = viewer.user.name.split(" ")[0] ?? viewer.user.name;
-  const otherDevices = sessions.filter((session) => session.id !== viewer.sessionId).length;
+  const visibleSessions = sessions;
+  const otherDevices = visibleSessions.filter((session) => session.id !== viewer.sessionId).length;
   const activeMembership = memberships.find(
     (membership) => membership.organization.id === viewer.activeOrganizationId,
   );
@@ -120,6 +127,8 @@ export async function AccountOverview() {
           </Link>
         ) : null}
       </header>
+
+      {readOnlyDemo ? <DemoNotice /> : null}
 
       <section aria-labelledby="workspaces-heading">
         <SectionHeading
@@ -166,20 +175,27 @@ export async function AccountOverview() {
           </ul>
         )}
 
-        <details className="group mt-6 border border-border bg-card">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-accent/50 [&::-webkit-details-marker]:hidden">
-            <span className="flex items-center gap-2 text-sm font-medium">
-              <Plus className="size-4 text-primary" aria-hidden="true" />
-              Create a workspace
-            </span>
-            <span className="font-mono text-[0.5rem] uppercase tracking-[0.14em] text-muted-foreground">
-              You become its Owner
-            </span>
-          </summary>
-          <div className="border-t border-border p-4">
-            <CreateWorkspaceForm />
-          </div>
-        </details>
+        {readOnlyDemo ? (
+          <p className="mt-5 border-l-2 border-primary bg-primary/5 px-4 py-3 text-sm leading-relaxed text-muted-foreground">
+            The shared demo account cannot create workspaces. Register your own account to try the
+            full product, including settings and invitations.
+          </p>
+        ) : (
+          <details className="group mt-6 border border-border bg-card">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-accent/50 [&::-webkit-details-marker]:hidden">
+              <span className="flex items-center gap-2 text-sm font-medium">
+                <Plus className="size-4 text-primary" aria-hidden="true" />
+                Create a workspace
+              </span>
+              <span className="font-mono text-[0.5rem] uppercase tracking-[0.14em] text-muted-foreground">
+                You become its Owner
+              </span>
+            </summary>
+            <div className="border-t border-border p-4">
+              <CreateWorkspaceForm />
+            </div>
+          </details>
+        )}
       </section>
 
       <section aria-labelledby="sessions-heading">
@@ -187,14 +203,18 @@ export async function AccountOverview() {
           id="sessions-heading"
           index="02"
           title="Active sessions"
-          aside={`${sessions.length} live · cookie only`}
+          aside={
+            readOnlyDemo
+              ? "shared demo · this device only"
+              : `${visibleSessions.length} live · cookie only`
+          }
         />
 
-        {sessions.length === 0 ? (
+        {visibleSessions.length === 0 ? (
           <p className="text-sm text-muted-foreground">No active sessions.</p>
         ) : (
           <ul className="border-t border-border">
-            {sessions.map((session) => {
+            {visibleSessions.map((session) => {
               const isCurrent = session.id === viewer.sessionId;
 
               return (
@@ -217,7 +237,7 @@ export async function AccountOverview() {
                     </p>
                   </div>
 
-                  {isCurrent ? null : (
+                  {isCurrent || readOnlyDemo ? null : (
                     <form action={revokeSessionAction}>
                       <input type="hidden" name="sessionId" value={session.id} />
                       <Button type="submit" variant="outline" size="sm">
@@ -242,15 +262,26 @@ export async function AccountOverview() {
               The cookie holds a random token; the database only keeps its SHA-256 digest. A
               password reset signs out every device, including this one.
             </p>
-            <Link
-              href="/forgot-password"
-              className="link-underline mt-3 inline-block text-sm text-primary"
-            >
-              Send a password reset link
-            </Link>
+            {readOnlyDemo ? (
+              <p className="mt-3 max-w-prose text-sm leading-relaxed text-muted-foreground">
+                The shared demo password is fixed, and sessions are not revocable while demo mode is
+                read-only.
+              </p>
+            ) : (
+              <Link
+                href="/forgot-password"
+                className="link-underline mt-3 inline-block text-sm text-primary"
+              >
+                Send a password reset link
+              </Link>
+            )}
           </div>
 
-          {otherDevices > 0 ? (
+          {readOnlyDemo ? (
+            <span className="font-mono text-[0.5rem] uppercase tracking-[0.14em] text-muted-foreground">
+              Fixed demo password · session changes disabled
+            </span>
+          ) : otherDevices > 0 ? (
             <form action={revokeOtherSessionsAction}>
               <Button type="submit" variant="outline" size="sm">
                 Sign out {otherDevices} other device{otherDevices === 1 ? "" : "s"}

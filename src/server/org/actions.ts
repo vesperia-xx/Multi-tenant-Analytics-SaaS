@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { Role } from "@/generated/prisma/enums";
+import { DEMO_ACCOUNT_MESSAGE } from "@/lib/demo";
 import { serverEnv } from "@/lib/env";
 import { INVITATION_TTL_DAYS, INVITATION_TTL_MS, WORKSPACES_PER_USER_LIMIT } from "@/lib/org-constants";
 import type { OrgFormState } from "@/lib/org-form-state";
@@ -26,6 +27,7 @@ import { consumeRateLimit } from "@/server/auth/rate-limit";
 import { recordAudit } from "@/server/auth/audit";
 import { resolveUniqueSlug } from "@/server/org/slug";
 import { resolveOrgContext } from "@/server/org/context";
+import { demoWriteBlocked, isReadOnlyAccount, isReadOnlyOrg } from "@/server/org/demo";
 
 function fail(message: string): OrgFormState {
   return { status: "error", message };
@@ -58,6 +60,10 @@ export async function createWorkspaceAction(
   }
 
   const viewer = await requireViewer("/app");
+  if (isReadOnlyAccount(viewer.user)) {
+    return fail(DEMO_ACCOUNT_MESSAGE);
+  }
+
   const { ip, userAgent } = await requestMetadata();
 
   const owned = await prisma.membership.count({ where: { userId: viewer.user.id } });
@@ -169,6 +175,9 @@ export async function updateWorkspaceAction(
     return fail("You do not have permission to change this workspace.");
   }
 
+  const locked = demoWriteBlocked(context);
+  if (locked) return locked;
+
   const before = {
     name: context.organization.name,
     currency: context.organization.currency,
@@ -237,6 +246,9 @@ export async function inviteMemberAction(
   if (!assignableRoles(context.membership.role).includes(role)) {
     return fail("You cannot assign that role.");
   }
+
+  const locked = demoWriteBlocked(context);
+  if (locked) return locked;
 
   const limit = await consumeRateLimit(`org:invite:${context.organization.id}`, 20, 60 * 60);
   if (!limit.allowed) return fail(retryMessage(limit.retryAfterSeconds));
@@ -331,6 +343,9 @@ export async function revokeInvitationAction(
     return fail("You do not have permission to manage invitations.");
   }
 
+  const locked = demoWriteBlocked(context);
+  if (locked) return locked;
+
   const invitation = await prisma.invitation.findFirst({
     where: {
       id: parsed.data.invitationId,
@@ -382,6 +397,9 @@ export async function changeMemberRoleAction(
   if (!can(context.membership.role, "member:manage")) {
     return fail("You do not have permission to change roles.");
   }
+
+  const locked = demoWriteBlocked(context);
+  if (locked) return locked;
 
   const member = await prisma.membership.findFirst({
     where: { id: parsed.data.memberId, organizationId: context.organization.id },
@@ -443,6 +461,9 @@ export async function removeMemberAction(
     return fail("You do not have permission to remove members.");
   }
 
+  const locked = demoWriteBlocked(context);
+  if (locked) return locked;
+
   const member = await prisma.membership.findFirst({
     where: { id: parsed.data.memberId, organizationId: context.organization.id },
     select: { id: true, role: true, userId: true, user: { select: { email: true } } },
@@ -492,6 +513,10 @@ export async function acceptInvitationAction(
     redirect(`/login?next=${encodeURIComponent(`/invite/${parsed.data.token}`)}`);
   }
 
+  if (isReadOnlyAccount(viewer.user)) {
+    return fail(DEMO_ACCOUNT_MESSAGE);
+  }
+
   const invitation = await prisma.invitation.findUnique({
     where: { tokenHash: hashToken(parsed.data.token) },
     select: {
@@ -501,7 +526,7 @@ export async function acceptInvitationAction(
       expiresAt: true,
       acceptedAt: true,
       revokedAt: true,
-      organization: { select: { id: true, name: true, slug: true } },
+      organization: { select: { id: true, name: true, slug: true, isDemo: true } },
     },
   });
 
@@ -509,6 +534,10 @@ export async function acceptInvitationAction(
   if (invitation.acceptedAt) return fail("This invitation was already accepted.");
   if (invitation.revokedAt) return fail("This invitation was revoked by the workspace.");
   if (invitation.expiresAt <= new Date()) return fail("This invitation has expired. Ask for a new one.");
+
+  if (isReadOnlyOrg(invitation.organization)) {
+    return fail("This workspace is a read-only demo and cannot accept new members.");
+  }
 
   if (invitation.email.toLowerCase() !== viewer.user.email.toLowerCase()) {
     return fail(

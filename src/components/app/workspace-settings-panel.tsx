@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { ROLE_LABELS, can, canManageMember } from "@/lib/permissions";
 import { prisma } from "@/server/db/client";
 import { requireOrgContext } from "@/server/org/context";
+import { isReadOnlyAccount, isReadOnlyOrg } from "@/server/org/demo";
 
 import { InvitationRow } from "./invitation-row";
 import { InviteMemberForm } from "./invite-member-form";
@@ -36,9 +37,44 @@ function SectionHeading({
   );
 }
 
+function ReadOnlyProfile({
+  name,
+  currency,
+  timezone,
+}: {
+  name: string;
+  currency: string;
+  timezone: string;
+}) {
+  const fields = [
+    { label: "Workspace name", value: name },
+    { label: "Currency", value: currency },
+    { label: "Time zone", value: timezone },
+  ];
+
+  return (
+    <div className="border border-border bg-card">
+      <dl className="grid gap-px bg-border sm:grid-cols-3">
+        {fields.map((field) => (
+          <div key={field.label} className="bg-card px-4 py-3">
+            <dt className="font-mono text-[0.5rem] uppercase tracking-[0.16em] text-muted-foreground">
+              {field.label}
+            </dt>
+            <dd className="mt-1 break-words text-sm">{field.value}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="border-t border-border px-4 py-2.5 font-mono text-[0.5625rem] uppercase tracking-[0.1em] text-muted-foreground">
+        Read-only demo · editing is disabled
+      </p>
+    </div>
+  );
+}
+
 export async function WorkspaceSettingsPanel({ orgSlug }: { orgSlug: string }) {
   const context = await requireOrgContext(orgSlug);
   const { organization, membership } = context;
+  const readOnly = isReadOnlyOrg(organization) || isReadOnlyAccount(context.viewer.user);
 
   const canUpdate = can(membership.role, "org:update");
   const canInvite = can(membership.role, "member:invite");
@@ -110,12 +146,20 @@ export async function WorkspaceSettingsPanel({ orgSlug }: { orgSlug: string }) {
             title="Workspace profile"
             aside={`${membership.role === "OWNER" ? "owner access" : "admin access"}`}
           />
-          <WorkspaceProfileForm
-            slug={organization.slug}
-            name={organization.name}
-            currency={organization.currency}
-            timezone={organization.timezone}
-          />
+          {readOnly ? (
+            <ReadOnlyProfile
+              name={organization.name}
+              currency={organization.currency}
+              timezone={organization.timezone}
+            />
+          ) : (
+            <WorkspaceProfileForm
+              slug={organization.slug}
+              name={organization.name}
+              currency={organization.currency}
+              timezone={organization.timezone}
+            />
+          )}
         </section>
       ) : null}
 
@@ -141,6 +185,7 @@ export async function WorkspaceSettingsPanel({ orgSlug }: { orgSlug: string }) {
                 actorRole={membership.role}
                 isSelf={member.userId === context.viewer.user.id}
                 canManage={canManageMember(membership.role, member.role)}
+                readOnly={readOnly}
               />
             ))}
           </ul>
@@ -157,7 +202,19 @@ export async function WorkspaceSettingsPanel({ orgSlug }: { orgSlug: string }) {
           />
 
           <div className="border border-border bg-card p-5">
-            <InviteMemberForm slug={organization.slug} actorRole={membership.role} />
+            {readOnly ? (
+              <div>
+                <p className="font-mono text-[0.5rem] uppercase tracking-[0.16em] text-muted-foreground">
+                  Invitations are disabled
+                </p>
+                <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted-foreground">
+                  Demo mode is read-only. Create your own account to invite people and manage
+                  roles.
+                </p>
+              </div>
+            ) : (
+              <InviteMemberForm slug={organization.slug} actorRole={membership.role} />
+            )}
           </div>
 
           {invitations.length > 0 ? (
@@ -170,6 +227,7 @@ export async function WorkspaceSettingsPanel({ orgSlug }: { orgSlug: string }) {
                   email={invitation.email}
                   roleLabel={ROLE_LABELS[invitation.role]}
                   expiresAt={format(invitation.expiresAt, "d MMM yyyy")}
+                  readOnly={readOnly}
                 />
               ))}
             </ul>

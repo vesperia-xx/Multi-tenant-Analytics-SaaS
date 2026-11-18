@@ -20,6 +20,7 @@ export function MemberRow({
   actorRole,
   isSelf,
   canManage,
+  readOnly = false,
 }: {
   slug: string;
   memberId: string;
@@ -30,6 +31,7 @@ export function MemberRow({
   actorRole: Role;
   isSelf: boolean;
   canManage: boolean;
+  readOnly?: boolean;
 }) {
   const [roleState, roleAction, rolePending] = useActionState(
     changeMemberRoleAction,
@@ -41,7 +43,7 @@ export function MemberRow({
   );
 
   const options = assignableRoles(actorRole);
-  const editable = canManage && !isSelf && role !== "OWNER";
+  const editable = !readOnly && canManage && !isSelf && role !== "OWNER";
 
   return (
     <li className="grid gap-3 border-b border-border py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
@@ -109,7 +111,13 @@ export function MemberRow({
         </div>
       ) : (
         <span className="font-mono text-[0.5rem] uppercase tracking-[0.14em] text-muted-foreground">
-          {role === "OWNER" ? "Protected" : isSelf ? "This device" : ROLE_LABELS[role]}
+          {readOnly
+            ? `${ROLE_LABELS[role]}${role === "OWNER" ? " · protected" : ""}`
+            : role === "OWNER"
+              ? "Protected"
+              : isSelf
+                ? "This device"
+                : ROLE_LABELS[role]}
         </span>
       )}
     </li>

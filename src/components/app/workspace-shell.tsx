@@ -5,7 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { ROLE_DESCRIPTIONS, ROLE_LABELS, can } from "@/lib/permissions";
 import { prisma } from "@/server/db/client";
 import { requireOrgContext } from "@/server/org/context";
+import { isReadOnlyAccount, isReadOnlyOrg } from "@/server/org/demo";
 
+import { DemoNotice } from "./demo-notice";
 import { WorkspaceNav } from "./workspace-nav";
 import { WorkspaceSwitcher } from "./workspace-switcher";
 
@@ -21,6 +23,8 @@ export async function WorkspaceShell({
   children: React.ReactNode;
 }) {
   const context = await requireOrgContext(orgSlug);
+  const readOnly =
+    isReadOnlyOrg(context.organization) || isReadOnlyAccount(context.viewer.user);
 
   const memberships = await prisma.membership.findMany({
     where: { userId: context.viewer.user.id },
@@ -105,7 +109,7 @@ export async function WorkspaceShell({
             </p>
             {context.organization.isDemo ? (
               <Badge variant="outline" className="mt-3">
-                Demo · read-only
+                {readOnly ? "Demo · read-only" : "Demo"}
               </Badge>
             ) : null}
           </div>
@@ -130,7 +134,10 @@ export async function WorkspaceShell({
           </Link>
         </aside>
 
-        <div className="min-w-0">{children}</div>
+        <div className="min-w-0">
+          {readOnly ? <DemoNotice className="mb-8" /> : null}
+          {children}
+        </div>
       </div>
     </div>
   );

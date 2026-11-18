@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { Role } from "@/generated/prisma/enums";
 import { RESET_TOKEN_TTL_MS } from "@/lib/auth-constants";
 import type { AuthFormState } from "@/lib/auth-form-state";
+import { DEMO_EMAIL } from "@/lib/demo";
 import { serverEnv } from "@/lib/env";
 import {
   collectFieldErrors,
@@ -16,6 +17,7 @@ import {
 } from "@/lib/validation/auth";
 import { prisma } from "@/server/db/client";
 import { sendPasswordResetEmail } from "@/server/email/send";
+import { isReadOnlyAccount } from "@/server/org/demo";
 import { resolveUniqueSlug } from "@/server/org/slug";
 
 import { hashPassword, verifyPassword } from "./password";
@@ -84,6 +86,29 @@ export async function loginAction(
 
   await createSession(user.id);
   redirect(safeNextPath(formData.get("next")));
+}
+
+/**
+ * One-click access for the public demo. It is only registered when
+ * `DEMO_MODE` is on, still passes through the IP rate limiter, and only ever
+ * signs in the seeded `is_demo` account.
+ */
+export async function demoLoginAction(): Promise<void> {
+  if (!serverEnv().DEMO_MODE) redirect("/login?demo=unavailable");
+
+  const { ip } = await requestMetadata();
+  const limit = await consumeRateLimit(`auth:demo:ip:${ip ?? "unknown"}`, 30, 60 * 60);
+  if (!limit.allowed) redirect("/login?demo=limited");
+
+  const user = await prisma.user.findFirst({
+    where: { email: DEMO_EMAIL, isDemo: true },
+    select: { id: true },
+  });
+
+  if (!user) redirect("/login?demo=unavailable");
+
+  await createSession(user.id);
+  redirect("/app");
 }
 
 export async function registerAction(
@@ -218,6 +243,10 @@ export async function requestPasswordResetAction(
 
   if (!user) return genericResponse;
 
+  // A shared demo account must not be taken over by a visitor: skip the token
+  // entirely and keep the response indistinguishable from the generic one.
+  if (user.isDemo && env.DEMO_READ_ONLY) return genericResponse;
+
   const token = generateToken();
   const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
 
@@ -275,13 +304,26 @@ export async function resetPasswordAction(
 
   const record = await prisma.passwordResetToken.findUnique({
     where: { tokenHash: hashToken(token) },
-    select: { id: true, userId: true, expiresAt: true, usedAt: true },
+    select: {
+      id: true,
+      userId: true,
+      expiresAt: true,
+      usedAt: true,
+      user: { select: { isDemo: true } },
+    },
   });
 
   if (!record || record.usedAt || record.expiresAt <= new Date()) {
     return {
       status: "error",
       message: "This reset link is invalid or has expired. Request a new one.",
+    };
+  }
+
+  if (record.user.isDemo && serverEnv().DEMO_READ_ONLY) {
+    return {
+      status: "error",
+      message: "The shared demo password is fixed. Create your own account to change a password.",
     };
   }
 
@@ -321,6 +363,7 @@ export async function logoutAction(): Promise<void> {
 export async function revokeOtherSessionsAction(): Promise<void> {
   const viewer = await getViewer();
   if (!viewer) redirect("/login");
+  if (isReadOnlyAccount(viewer.user)) redirect("/app");
 
   await revokeOtherSessions(viewer.user.id, viewer.sessionId);
   revalidatePath("/app");
@@ -329,6 +372,7 @@ export async function revokeOtherSessionsAction(): Promise<void> {
 export async function revokeSessionAction(formData: FormData): Promise<void> {
   const viewer = await getViewer();
   if (!viewer) redirect("/login");
+  if (isReadOnlyAccount(viewer.user)) redirect("/app");
 
   const sessionId = formData.get("sessionId");
   if (typeof sessionId !== "string" || !sessionId) return;

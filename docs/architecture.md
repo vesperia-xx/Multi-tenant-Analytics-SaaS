@@ -339,7 +339,7 @@ Invitado abre /invite/[token]
 
 El enlace de invitación se muestra en la UI únicamente a quien invitó (ya tiene `member:invite`),
 no al invitado. Es la diferencia con los enlaces de reset, que solo se exponen para cuentas
-`is_demo`.
+`is_demo` y se suprimen cuando `DEMO_READ_ONLY` está activo.
 
 ---
 
@@ -420,8 +420,9 @@ instancias no comparten memoria. Valores actuales: login 5/15 min por cuenta y 2
 registro 5/hora por IP; solicitud de reset 3/hora por cuenta y 10/hora por IP.
 
 Sin proveedor de email, el enlace de reset se imprime en el log en desarrollo y, en modo demo,
-se devuelve a la UI **solo para cuentas `is_demo`**. La respuesta a "he olvidado mi contraseña"
-es siempre la misma exista o no la cuenta.
+se devuelve a la UI **solo para cuentas `is_demo`**. Con `DEMO_READ_ONLY` no se emite token para la
+cuenta compartida. La respuesta a "he olvidado mi contraseña" es siempre la misma exista o no la
+cuenta.
 
 ---
 
@@ -539,6 +540,45 @@ Lectura: requireOrgContext + can(role, "audit:read")
 - **Payload parcial cuando aplica.** Exportaciones e invitaciones guardan solo los campos
   relevantes (`format`, `rows`, `filters`, `email`, `role`), no la entidad entera.
 
+### 8.4 Modo demo de solo lectura
+
+```
+npm run db:seed
+        │
+        ├─ upsert de demo@vortex.test (is_demo = true)
+        ├─ upsert de Acme Inc / Nordwind Studio (is_demo = true)
+        ├─ reemplaza solo las filas analíticas de esos tenants
+        ├─ rehace miembros, invitación pendiente y ledger de auditoría
+        └─ imprime credenciales y rutas
+
+Petición de escritura
+        ├─ requireOrgContext → organización + rol
+        ├─ demoWriteBlocked(context)
+        │     ├─ ¿la organización es demo?           → error de formulario
+        │     └─ ¿la cuenta es demo?                 → error de formulario
+        └─ solo entonces valida negocio y escribe
+```
+
+- **Dos llaves, no una.** El bloqueo cubre la organización demo y la cuenta compartida. Así, una
+  cuenta demo que localmente sea Owner de un workspace anterior a la Fase 8 tampoco puede escribir
+  en él; el modo demo no se convierte en puerta trasera.
+- **El guard vive en las Server Actions.** `settings`, invitaciones, revocación, cambio de rol,
+  expulsión, aceptación de invitación y creación de workspace comprueban `DEMO_READ_ONLY`; ocultar
+  botones es solo la capa visual. La UI muestra una franja de solo lectura, un resumen de valores en
+  lugar del formulario y filas de miembro sin controles.
+- **Lecturas y exportaciones siguen vivas.** Dashboards, tablas, detalle, CSV/PDF y auditoría
+  funcionan; una exportación sigue escribiendo su entrada `report.exported` como bookkeeping interno.
+- **La cuenta compartida no se puede secuestrar.** Con `DEMO_READ_ONLY`, no se emiten tokens de
+  reset para `is_demo`, no se revocan sesiones ajenas y no se aceptan invitaciones. La respuesta
+  genérica de "he olvidado mi contraseña" no cambia.
+- **Seed idempotente.** Cada ejecución reemplaza las filas analíticas de Acme y Nordwind, rehace sus
+  miembros, la invitación pendiente y el ledger, y actualiza la contraseña demo. No toca otros
+  workspaces del mismo usuario.
+- **Catálogos distintos.** Acme vende audio, escritorio, viaje e iluminación en USD/`America/New_York`;
+  Nordwind vende obra gráfica, objetos, textil y papel en EUR/`Europe/Oslo`. Los volúmenes y la
+  estacionalidad también difieren, de modo que las dos experiencias no son el mismo dataset con otro
+  nombre.
+
 ---
 
 ## 9. Decisiones y alternativas descartadas
@@ -564,7 +604,10 @@ Lectura: requireOrgContext + can(role, "audit:read")
 | Export reutiliza los builders SQL | Consulta aparte | El archivo y la pantalla no pueden discrepar
 | Snapshots JSON en la auditoría | Event sourcing | Simple de escribir, inmune a cambios de esquema y suficiente para el producto
 | Diff calculado al leer | Diferencia precalculada | Una sola función pura, testeada; la UI no reinterpreta snapshots
-| Audit de solo lectura en la app | Edición administrativa | Un ledger que se puede editar no es un ledger |
+| Audit de solo lectura en la app | Edición administrativa | Un ledger que se puede editar no es un ledger
+| Guard de demo en Server Actions | Ocultar botones en React | La UI no es un límite de seguridad; el error vuelve del servidor
+| Demo bloquea organización y cuenta | Solo `organizations.is_demo` | Evita que la cuenta compartida escriba en un workspace antiguo
+| Seed de demo idempotente | Datos generados al vuelo | El visitante ve SQL real y el reset restaura el mismo estado
 | Sin microfrontends | Varias apps | Un solo dominio, un solo deploy, un solo modelo de sesión |
 
 ---
@@ -580,7 +623,7 @@ Lectura: requireOrgContext + can(role, "audit:read")
 | 5 | Tablas de pedidos, clientes y productos | ✅ |
 | 6 | Reportes CSV y PDF | ✅ |
 | 7 | Audit log con diffs | ✅ |
-| 8 | Seed de Acme y Nordwind + modo demo de solo lectura | ⏳ |
+| 8 | Seed de Acme y Nordwind + modo demo de solo lectura | ✅ |
 | 9 | RLS con `FORCE`, rendimiento, hardening | ⏳ |
 | 10 | Tests, CI/CD, despliegue en Vercel + Neon | ⏳ |
 
