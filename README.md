@@ -6,6 +6,9 @@ Vortex Metrics gives every organization its own workspace, its own data and its 
 
 > **Status:** Phase 10 of 10 — CI/CD, Playwright E2E and the Vercel + Neon deployment guide.
 > See the [roadmap](#roadmap) for the shipping sequence.
+>
+> **Live demo:** [https://vortex-metrics.vercel.app](https://vortex-metrics.vercel.app) — sign in with
+> the shared demo account and explore Acme Inc and Nordwind Studio.
 
 ---
 
