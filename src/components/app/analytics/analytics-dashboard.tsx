@@ -12,6 +12,7 @@ import { requireOrgContext } from "@/server/org/context";
 
 import { AnalyticsToolbar } from "./analytics-toolbar";
 import { KpiCard } from "./kpi-card";
+import { KpiValue } from "./kpi-value";
 import { RevenueChart } from "./revenue-chart";
 import { StatusBreakdown } from "./status-breakdown";
 import { TopProducts } from "./top-products";
@@ -170,25 +171,25 @@ export async function AnalyticsDashboard({
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard
             label="Revenue"
-            value={formatCurrency(data.revenue.value, currency)}
+            value={<KpiValue value={data.revenue.value} kind="currency" currency={currency} />}
             delta={data.revenue.changePercent}
             hint={hint}
           />
           <KpiCard
             label="Orders"
-            value={formatNumber(data.orders.value)}
+            value={<KpiValue value={data.orders.value} kind="number" />}
             delta={data.orders.changePercent}
             hint={hint}
           />
           <KpiCard
             label="Average order"
-            value={formatCurrency(data.averageOrder.value, currency)}
+            value={<KpiValue value={data.averageOrder.value} kind="currency" currency={currency} />}
             delta={data.averageOrder.changePercent}
             hint={hint}
           />
           <KpiCard
             label="New customers"
-            value={formatNumber(data.newCustomers.value)}
+            value={<KpiValue value={data.newCustomers.value} kind="number" />}
             delta={data.newCustomers.changePercent}
             hint={hint}
           />

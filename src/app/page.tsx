@@ -63,15 +63,15 @@ const features = [
 const steps = [
   {
     title: "Interface",
-    description: "React Server Components with small client islands. No business rules in components.",
+    description: "React Server Components, small client islands, no business rules in the browser.",
   },
   {
     title: "Edge",
-    description: "Server Actions for writes, Route Handlers for reads and streaming exports.",
+    description: "Server Actions for writes, Route Handlers for reads, streaming exports.",
   },
   {
     title: "Authorization",
-    description: "Zod validation, membership lookup, permission matrix and rate limits.",
+    description: "Zod validation, membership lookup, one permission matrix, rate limits.",
   },
   {
     title: "Data access",
@@ -79,7 +79,7 @@ const steps = [
   },
   {
     title: "PostgreSQL",
-    description: "Tenant composite indexes, pg_trgm search, transactions and RLS policies.",
+    description: "Composite tenant indexes, pg_trgm search, transactions and RLS with FORCE.",
   },
 ];
 
@@ -116,13 +116,6 @@ const auditRows = [
     before: "Paid",
     after: "Refunded",
   },
-];
-
-const stack = [
-  { title: "Application", items: ["Next.js 16", "React 19", "TypeScript strict", "Tailwind CSS 4"] },
-  { title: "Data", items: ["PostgreSQL 16", "Prisma 7", "pg_trgm", "Row-Level Security"] },
-  { title: "Product", items: ["TanStack Query", "TanStack Table", "Recharts", "Zod"] },
-  { title: "Delivery", items: ["Vercel + Neon", "Docker Compose", "GitHub Actions", "Vitest"] },
 ];
 
 function SectionIntro({
@@ -178,10 +171,10 @@ export default function HomePage() {
                 </p>
 
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <a href="#product" className={buttonVariants({ size: "lg" })}>
-                    Explore the platform
+                  <Link href="/login" className={buttonVariants({ size: "lg" })}>
+                    Open the live demo
                     <ArrowRight className="size-4" />
-                  </a>
+                  </Link>
                   <a
                     href="#architecture"
                     className={buttonVariants({ variant: "outline", size: "lg" })}
@@ -228,8 +221,8 @@ export default function HomePage() {
           <div className="mx-auto w-full max-w-7xl px-5 sm:px-8">
             <div className="grid gap-10 lg:grid-cols-[0.34fr_0.66fr] lg:gap-16">
               <SectionIntro index="01" label="The product" title={<>A dashboard is easy. A tenant-safe platform is not.</>}>
-                The interesting part is everything behind the charts: how a request becomes a
-                scoped query, who is allowed to change what, and how the system proves it later.
+                Everything behind the charts: how a request becomes a scoped query, who changes
+                what, and how the system proves it later.
               </SectionIntro>
 
               <ol className="border-t border-border">
@@ -275,7 +268,7 @@ export default function HomePage() {
                   </>
                 }
               >
-                UI, authorization, data access and SQL stay separable. The same sequence powers
+                UI, authorization, data access and SQL stay separable — the same sequence powers
                 dashboards, tables and exports.
               </SectionIntro>
 
@@ -297,89 +290,10 @@ export default function HomePage() {
                   ))}
                 </ol>
 
-                <div className="mt-8 border border-border bg-card">
-                  <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-                    <span className="font-mono text-[0.5625rem] uppercase tracking-[0.16em] text-muted-foreground">
-                      tenant-guard.ts
-                    </span>
-                    <span className="font-mono text-[0.5rem] uppercase tracking-[0.14em] text-muted-foreground">
-                      application
-                    </span>
-                  </div>
-                  <pre className="overflow-x-auto px-4 py-4 font-mono text-[0.6875rem] leading-[1.7]">
-                    <code>
-                      <span className="text-primary">const</span>{" "}
-                      <span>ctx</span> = <span className="text-primary">await</span>{" "}
-                      <span className="text-chart-4">requirePermission</span>
-                      <span className="text-muted-foreground">(</span>
-                      <span className="text-destructive">orgSlug</span>
-                      <span className="text-muted-foreground">,</span>{" "}
-                      <span className="text-destructive">&quot;analytics:read&quot;</span>
-                      <span className="text-muted-foreground">);</span>
-                      {"\n\n"}
-                      <span className="text-muted-foreground">
-                        {"// orgId comes from the verified membership,"}
-                      </span>
-                      {"\n"}
-                      <span className="text-muted-foreground">
-                        {"// never from the request body."}
-                      </span>
-                      {"\n"}
-                      <span className="text-primary">const</span> <span>revenue</span> ={" "}
-                      <span className="text-primary">await</span>{" "}
-                      <span className="text-chart-4">analytics</span>
-                      <span className="text-muted-foreground">.</span>
-                      <span className="text-chart-4">revenue</span>
-                      <span className="text-muted-foreground">(</span>
-                      <span>ctx.org.id</span>
-                      <span className="text-muted-foreground">,</span> <span>range</span>
-                      <span className="text-muted-foreground">);</span>
-                    </code>
-                  </pre>
-
-                  <div className="flex items-center justify-between border-y border-border px-4 py-2.5">
-                    <span className="font-mono text-[0.5625rem] uppercase tracking-[0.16em] text-muted-foreground">
-                      rls.sql
-                    </span>
-                    <span className="font-mono text-[0.5rem] uppercase tracking-[0.14em] text-muted-foreground">
-                      postgres
-                    </span>
-                  </div>
-                  <pre className="overflow-x-auto px-4 py-4 font-mono text-[0.6875rem] leading-[1.7]">
-                    <code>
-                      <span className="text-primary">ALTER TABLE</span> <span>orders</span>{" "}
-                      <span className="text-primary">ENABLE ROW LEVEL SECURITY</span>
-                      <span className="text-muted-foreground">;</span>
-                      {"\n"}
-                      <span className="text-primary">ALTER TABLE</span> <span>orders</span>{" "}
-                      <span className="text-primary">FORCE ROW LEVEL SECURITY</span>
-                      <span className="text-muted-foreground">;</span>
-                      {"\n\n"}
-                      <span className="text-primary">CREATE POLICY</span>{" "}
-                      <span>tenant_isolation</span> <span className="text-primary">ON</span>{" "}
-                      <span>orders</span>
-                      {"\n"}
-                      <span className="text-primary">USING</span>{" "}
-                      <span className="text-muted-foreground">(</span>
-                      {"\n  "}
-                      <span>organization_id</span>{" "}
-                      <span className="text-muted-foreground">=</span>{" "}
-                      <span className="text-chart-4">current_setting</span>
-                      <span className="text-muted-foreground">(</span>
-                      <span className="text-destructive">
-                        &apos;app.current_org_id&apos;
-                      </span>
-                      <span className="text-muted-foreground">)::</span>
-                      <span className="text-chart-4">uuid</span>
-                      {"\n"}
-                      <span className="text-muted-foreground">);</span>
-                    </code>
-                  </pre>
-                  <p className="border-t border-border px-4 py-3 text-[0.6875rem] leading-relaxed text-muted-foreground">
-                    Cross-tenant reads return 404 — not 403 — so the API never confirms that a
-                    record exists in another tenant.
-                  </p>
-                </div>
+                <p className="mt-8 border-l-2 border-primary bg-primary/5 px-4 py-3 text-sm leading-relaxed text-muted-foreground">
+                  Cross-tenant reads return <span className="font-medium text-foreground">404, not 403</span> — the API
+                  never confirms a record exists in another tenant.
+                </p>
               </div>
             </div>
           </div>
@@ -486,33 +400,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* 04 — Stack */}
-        <section id="stack" className="border-b border-border py-16 sm:py-24">
-          <div className="mx-auto w-full max-w-7xl px-5 sm:px-8">
-            <div className="grid gap-10 lg:grid-cols-[0.34fr_0.66fr] lg:gap-16">
-              <SectionIntro index="04" label="Stack" title={<>Boring choices, deliberately.</>}>
-                Tools that make the isolation model easy to reason about, test and deploy — and
-                nothing that needs a separate runtime to stay correct.
-              </SectionIntro>
-
-              <dl className="grid gap-x-10 gap-y-8 sm:grid-cols-2">
-                {stack.map((group) => (
-                  <div key={group.title} className="border-t border-foreground/20 pt-4">
-                    <dt className="font-mono text-[0.5rem] uppercase tracking-[0.18em] text-muted-foreground">
-                      {group.title}
-                    </dt>
-                    <dd className="mt-3 flex flex-col gap-1.5 text-sm">
-                      {group.items.map((item) => (
-                        <span key={item}>{item}</span>
-                      ))}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-          </div>
-        </section>
-
         {/* Start CTA */}
         <section id="start" className="bg-foreground py-16 text-background sm:py-24">
           <div className="mx-auto grid w-full max-w-7xl gap-10 px-5 sm:px-8 lg:grid-cols-[1fr_auto] lg:items-end">
@@ -546,20 +433,20 @@ export default function HomePage() {
 
             <div className="flex flex-col items-start gap-3">
               <Link
-                href="/register"
+                href="/login"
                 className={cn(
                   buttonVariants({ variant: "secondary", size: "lg" }),
                   "bg-background text-foreground hover:bg-background/85",
                 )}
               >
-                Create a workspace
+                Open the live demo
                 <ArrowRight className="size-4" />
               </Link>
               <Link
-                href="/login"
+                href="/register"
                 className="font-mono text-[0.5625rem] uppercase tracking-[0.14em] text-background/60 underline-offset-4 hover:text-background hover:underline"
               >
-                Already a member? Sign in
+                Create a workspace
               </Link>
             </div>
           </div>

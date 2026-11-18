@@ -6,9 +6,28 @@ Vortex Metrics gives every organization its own workspace, its own data and its 
 
 > **Status:** Phase 10 of 10 — CI/CD, Playwright E2E and the Vercel + Neon deployment guide.
 > See the [roadmap](#roadmap) for the shipping sequence.
->
-> **Live demo:** [https://vortex-metrics.vercel.app](https://vortex-metrics.vercel.app) — sign in with
-> the shared demo account and explore Acme Inc and Nordwind Studio.
+
+## See it in 90 seconds
+
+**[https://vortex-metrics.vercel.app](https://vortex-metrics.vercel.app)** — one click signs you in with the shared demo account ([`demo@vortex.test`](https://vortex-metrics.vercel.app/login) / `vortex-demo-1`).
+
+1. **Landing** — the hero shows the product thesis: real PostgreSQL metrics, RLS with `FORCE`, one verified org context.
+2. **Dashboard** — click *Open the demo*: Acme Inc opens with KPIs that count up from zero, a revenue chart and an orders-by-status breakdown. Switch the workspace to **Nordwind Studio** with the switcher (you hold a different role there).
+3. **Orders** — search, filter by status, toggle the date range, open any order to see line items and totals.
+4. **Audit log** — filter `organization.updated` and click *Inspect* to see the field-level before/after diff, IP and user agent.
+5. **Exports** — click *Export CSV* or download the PDF report. Both stream from the same SQL as the screen.
+
+What to look for if you're evaluating this as engineering:
+
+| Signal | Where |
+| --- | --- |
+| Tenant isolation, twice | `src/server/db/tenant.ts`, `prisma/migrations/20261118073611_rls_hardening/` |
+| RBAC matrix (one source) | `src/lib/permissions.ts` — server *and* UI |
+| SQL, not mocks | `src/server/analytics/queries.ts` |
+| Audit diffs | `src/lib/diff.ts`, `/app/[orgSlug]/audit/[logId]` |
+| Tests that run in CI | `.github/workflows/ci.yml` |
+
+The full 60-second narration and shot list is in [`docs/portfolio-walkthrough.md`](docs/portfolio-walkthrough.md).
 
 ---
 

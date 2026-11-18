@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { Minus, TrendingDown, TrendingUp } from "lucide-react";
 
 import { formatPercent } from "@/lib/format";
@@ -9,7 +11,7 @@ export function KpiCard({
   hint,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   delta: number | null;
   hint: string;
 }) {
