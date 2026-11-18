@@ -10,6 +10,9 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+/** The Postgres SCRAM handshake calls randomBytes during render; the route must stay dynamic. */
+export const instant = false;
+
 export default function AccountPage() {
   return (
     <div className="mx-auto w-full max-w-5xl px-5 py-10 sm:px-8 lg:py-14">
