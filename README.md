@@ -4,7 +4,7 @@
 
 Vortex Metrics gives every organization its own workspace, its own data and its own permissions. Dashboards, tables and exports are powered by real SQL aggregates over a seeded PostgreSQL dataset — no mocks at runtime, no client-side math.
 
-> **Status:** Phase 6 of 10 — CSV exports and the PDF analytics report.
+> **Status:** Phase 7 of 10 — audit ledger with field-level before/after diffs.
 > See the [roadmap](#roadmap) for what ships next.
 
 ---
@@ -77,7 +77,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the ERD, RBAC matrix and 
 | 4 | Dashboard KPIs and analytics charts from real SQL | ✅ |
 | 5 | Orders, customers and products tables (search, filters, sorting, pagination) | ✅ |
 | 6 | CSV and PDF reports | ✅ |
-| 7 | Audit log with before/after diffs | ⏳ |
+| 7 | Audit log with before/after diffs | ✅ |
 | 8 | Seeded demo tenants + read-only demo mode | ⏳ |
 | 9 | Performance work, PostgreSQL RLS with FORCE, security hardening | ⏳ |
 | 10 | Tests, CI/CD, Vercel + Neon deployment, docs | ⏳ |
@@ -173,7 +173,7 @@ src/
   app/
     (auth)/               login, register, forgot-password, reset-password, invite/[token]
     app/                  account area: all workspaces and active sessions
-    app/[orgSlug]/        tenant-scoped shell, analytics dashboard, tables and settings
+    app/[orgSlug]/        tenant-scoped shell, dashboard, tables, audit and settings
     api/org/[orgSlug]/    authenticated JSON endpoints and CSV/PDF exports
     page.tsx              Marketing landing page
     layout.tsx            Root layout, theme provider, toasts
@@ -181,6 +181,7 @@ src/
   components/
     app/                  Account overview, workspace shell, members and invitations
     app/analytics/        KPI cards, Recharts panels, filters, empty states
+    app/audit/            Audit ledger and entry diff view
     app/customers/        Customer table view
     app/orders/           Order table view
     app/products/         Product table view
@@ -194,6 +195,7 @@ src/
   lib/                    Utilities, env validation, Zod schemas, permission matrix
   server/
     analytics/            Range resolution and tenant-scoped SQL aggregates
+    audit/                Audit list, detail and action catalogue
     auth/                 Password hashing, sessions, rate limits, Server Actions
     customers/            Customer list query
     db/client.ts          Prisma client with pg / Neon adapters
@@ -358,6 +360,31 @@ Every export re-checks session and membership (401/404), requires the `export` p
 roles have it), is limited to 20 per user per workspace per hour, returns `private, no-store`, and
 writes a `report.exported` entry to the audit ledger with the format, resource, row count and
 filters.
+
+## Audit log
+
+`audit_logs` is append-only: no endpoint updates or deletes a row. Every meaningful action writes
+one entry with the actor, the action, the resource and JSON snapshots of `before` and `after`.
+
+| Action | Written by |
+| --- | --- |
+| `organization.created` / `organization.updated` | Registration and workspace settings |
+| `member.joined` / `member.role_changed` / `member.removed` | Invitations accepted and member management |
+| `invitation.created` / `invitation.revoked` | Invite and revoke flows |
+| `report.exported` | Every CSV or PDF download, with format, rows and filters |
+
+The ledger is readable by **Owners and Admins only** (`audit:read`). The nav item is hidden for
+Managers and Viewers, a direct URL renders a restricted panel, and the JSON endpoint answers 403.
+
+`/app/[orgSlug]/audit` lists entries newest-first with free-text search (action, actor, resource),
+an action filter, a date range and pagination. `/audit/[logId]` shows the field-level diff:
+
+- `changed`, `added` and `removed` fields, side by side;
+- the raw before/after JSON;
+- context: actor and email, resource, IP, user agent, timestamp and entry id.
+
+Diffs are computed by `src/lib/diff.ts`, a pure function shared by the page and the unit tests, so
+the UI never reinterprets a snapshot on its own.
 
 ## Deployment
 

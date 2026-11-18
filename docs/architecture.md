@@ -511,6 +511,34 @@ GET /api/org/[orgSlug]/exports/report?range=…&from=…&to=…&granularity=…
 - **Auditoría**: cada descarga escribe `report.exported` con formato, recurso, filas y filtros. La
   Fase 7 le dará interfaz; los datos ya están.
 
+### 8.3 Auditoría y diffs
+
+```
+Mutación (settings, miembros, invitaciones, export)
+        │
+        ├─ recordAudit({ organizationId, actorId, action, resourceType,
+        │                resourceId, before, after, ip, userAgent })
+        ▼
+audit_logs (JSONB before/after, append-only)
+        │
+        ▼
+Lectura: requireOrgContext + can(role, "audit:read")
+        ├─ lista: búsqueda, acción, rango de fechas, COUNT(*) OVER(), paginación
+        └─ detalle: diffObjects(before, after) → tabla campo / antes / después + payload crudo
+```
+
+- **Snapshots completos, no solo el delta.** Guardar `before` y `after` íntegros evita que un cambio
+  de esquema reinterpretase el pasado; el diff se calcula al leer con `src/lib/diff.ts`, una función
+  pura cubierta por tests. Las filas sin cambios no se muestran.
+- **Alcance de solo lectura.** No existe endpoint que actualice o borre `audit_logs`. El
+  endurecimiento de la Fase 9 puede añadir un rol de base de datos con solo `INSERT`/`SELECT`.
+- **RBAC.** Solo Owner y Admin tienen `audit:read`: el ítem de navegación se oculta al resto, la URL
+  directa muestra un panel restringido y `/api/org/[orgSlug]/audit` responde **403**.
+- **Contexto operativo.** Cada entrada conserva IP y user-agent además del actor, útil para
+  investigar sesiones comprometidas.
+- **Payload parcial cuando aplica.** Exportaciones e invitaciones guardan solo los campos
+  relevantes (`format`, `rows`, `filters`, `email`, `role`), no la entidad entera.
+
 ---
 
 ## 9. Decisiones y alternativas descartadas
@@ -533,7 +561,10 @@ GET /api/org/[orgSlug]/exports/report?range=…&from=…&to=…&granularity=…
 | Orden por mapa whitelisted | Interpolar `sort` | El input solo elige una clave; nunca llega a SQL
 | CSV con BOM y neutralización de fórmulas | CSV plano | Excel abre acentos y no ejecuta celdas maliciosas
 | PDF con `@react-pdf/renderer` | Puppeteer / print HTML | Runtime Node sin binarios de navegador, apto para Vercel
-| Export reutiliza los builders SQL | Consulta aparte | El archivo y la pantalla no pueden discrepar |
+| Export reutiliza los builders SQL | Consulta aparte | El archivo y la pantalla no pueden discrepar
+| Snapshots JSON en la auditoría | Event sourcing | Simple de escribir, inmune a cambios de esquema y suficiente para el producto
+| Diff calculado al leer | Diferencia precalculada | Una sola función pura, testeada; la UI no reinterpreta snapshots
+| Audit de solo lectura en la app | Edición administrativa | Un ledger que se puede editar no es un ledger |
 | Sin microfrontends | Varias apps | Un solo dominio, un solo deploy, un solo modelo de sesión |
 
 ---
@@ -548,7 +579,7 @@ GET /api/org/[orgSlug]/exports/report?range=…&from=…&to=…&granularity=…
 | 4 | KPIs y gráficos desde SQL real | ✅ |
 | 5 | Tablas de pedidos, clientes y productos | ✅ |
 | 6 | Reportes CSV y PDF | ✅ |
-| 7 | Audit log con diffs | ⏳ |
+| 7 | Audit log con diffs | ✅ |
 | 8 | Seed de Acme y Nordwind + modo demo de solo lectura | ⏳ |
 | 9 | RLS con `FORCE`, rendimiento, hardening | ⏳ |
 | 10 | Tests, CI/CD, despliegue en Vercel + Neon | ⏳ |

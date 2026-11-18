@@ -41,16 +41,26 @@ export async function WorkspaceShell({
   };
 
   const canManage = can(context.membership.role, "member:invite");
+  const canAudit = can(context.membership.role, "audit:read");
 
   const navItems = [
     { index: "01", label: "Dashboard", href: `/app/${context.organization.slug}` },
     { index: "02", label: "Orders", href: `/app/${context.organization.slug}/orders` },
     { index: "03", label: "Customers", href: `/app/${context.organization.slug}/customers` },
     { index: "04", label: "Products", href: `/app/${context.organization.slug}/products` },
-    ...(canManage
+    ...(canAudit
       ? [
           {
             index: "05",
+            label: "Audit log",
+            href: `/app/${context.organization.slug}/audit`,
+          },
+        ]
+      : []),
+    ...(canManage
+      ? [
+          {
+            index: canAudit ? "06" : "05",
             label: "Members & settings",
             href: `/app/${context.organization.slug}/settings`,
           },

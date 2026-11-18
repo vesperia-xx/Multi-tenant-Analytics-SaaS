@@ -44,6 +44,31 @@ export function formatAmount(cents: number): string {
   return (cents / 100).toFixed(2);
 }
 
+/** Audit timestamps rendered in the workspace's timezone. */
+export function formatTimestamp(iso: string, timeZone: string, withSeconds = false): string {
+  try {
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      ...(withSeconds ? { second: "2-digit" as const } : {}),
+      hour12: false,
+    }).format(new Date(iso));
+  } catch {
+    return new Date(iso).toISOString();
+  }
+}
+
+/** Session IPs read better as "Local" than as ::1. */
+export function formatIp(ip: string | null | undefined): string {
+  if (!ip) return "Not recorded";
+  if (ip === "::1" || ip === "127.0.0.1") return "Local";
+  return ip;
+}
+
 export function formatPercent(value: number, digits = 1): string {
   return `${value >= 0 ? "+" : ""}${value.toFixed(digits)}%`;
 }
