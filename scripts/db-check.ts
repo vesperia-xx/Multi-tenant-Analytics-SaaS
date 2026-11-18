@@ -6,14 +6,14 @@ async function main() {
   const [version] = await prisma.$queryRaw<Array<{ version: string }>>`SELECT version()`;
 
   const tables = await prisma.$queryRaw<Array<{ table_name: string }>>`
-    SELECT table_name
+    SELECT table_name::text AS table_name
     FROM information_schema.tables
     WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
     ORDER BY table_name
   `;
 
   const trigramIndexes = await prisma.$queryRaw<Array<{ indexname: string }>>`
-    SELECT indexname
+    SELECT indexname::text AS indexname
     FROM pg_indexes
     WHERE schemaname = 'public' AND indexname LIKE '%trgm%'
     ORDER BY indexname
@@ -22,7 +22,7 @@ async function main() {
   const rlsTables = await prisma.$queryRaw<
     Array<{ relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }>
   >`
-    SELECT relname, relrowsecurity, relforcerowsecurity
+    SELECT relname::text AS relname, relrowsecurity, relforcerowsecurity
     FROM pg_class
     WHERE relnamespace = 'public'::regnamespace
       AND relkind = 'r'
@@ -31,7 +31,7 @@ async function main() {
   `;
 
   const policies = await prisma.$queryRaw<Array<{ tablename: string; policyname: string }>>`
-    SELECT tablename, policyname
+    SELECT tablename::text AS tablename, policyname::text AS policyname
     FROM pg_policies
     WHERE schemaname = 'public'
     ORDER BY tablename, policyname
