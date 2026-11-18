@@ -485,6 +485,32 @@ Decisiones:
 - **Búsqueda** `ILIKE '%x%'` sobre `orders.number`, `customers.name/email` y `products.name/sku`,
   todos con índice GIN trigram (6.2).
 
+### 8.2 Exportaciones
+
+```
+GET /api/org/[orgSlug]/exports/{orders|customers|products}?<mismos filtros>
+GET /api/org/[orgSlug]/exports/report?range=…&from=…&to=…&granularity=…
+        │
+        ├─ guardExport: sesión (401), membresía (404), permiso export (403), límite 20/hora (429)
+        ├─ Zod: mismos esquemas que las tablas / el dashboard
+        ├─ SQL: los mismos builders `Prisma.sql` y `getDashboardData`
+        ├─ audit: report.exported { format, resource, rows|filters }
+        └─ Content-Disposition: attachment; filename="vortex-…-YYYY-MM-DD.{csv,pdf}"
+```
+
+- **CSV de tablas**: respeta búsqueda, filtros y orden, ignora la paginación y exporta hasta 10 000
+  filas. Incluye BOM UTF-8, finales CRLF, dinero decimal (`189.00`) y fechas ISO 8601. Las celdas de
+  texto que empiezan por `=`, `+`, `@`, tabulador o CR se prefijan con `'` para neutralizar
+  inyección de fórmulas; los números negativos (`-12.50`) quedan intactos.
+- **PDF**: `@react-pdf/renderer` en runtime Node, A4, con KPIs y deltas, tabla de ingresos por
+  bucket, top productos, estados y adquisición. Se alimenta del **mismo** `getDashboardData` que la
+  pantalla, así que informe y gráfico no pueden discrepar.
+- **Guardas**: las mismas que las lecturas (401/404) más el permiso `export` (los cuatro roles lo
+  tienen) y un límite de 20 exportaciones por usuario y workspace cada hora en
+  `rate_limit_counters`.
+- **Auditoría**: cada descarga escribe `report.exported` con formato, recurso, filas y filtros. La
+  Fase 7 le dará interfaz; los datos ya están.
+
 ---
 
 ## 9. Decisiones y alternativas descartadas
@@ -505,7 +531,9 @@ Decisiones:
 | Estado de tabla en la URL | Estado local del cliente | Filtros compartibles, recargables y con atrás/adelante
 | Route Handlers para lecturas | Server Actions para todo | Respuestas JSON privadas, sin semántica de mutación
 | Orden por mapa whitelisted | Interpolar `sort` | El input solo elige una clave; nunca llega a SQL
-| PDF con `@react-pdf/renderer` | Puppeteer / HTML print | Runtime Node sin binarios de navegador, apto para Vercel |
+| CSV con BOM y neutralización de fórmulas | CSV plano | Excel abre acentos y no ejecuta celdas maliciosas
+| PDF con `@react-pdf/renderer` | Puppeteer / print HTML | Runtime Node sin binarios de navegador, apto para Vercel
+| Export reutiliza los builders SQL | Consulta aparte | El archivo y la pantalla no pueden discrepar |
 | Sin microfrontends | Varias apps | Un solo dominio, un solo deploy, un solo modelo de sesión |
 
 ---
@@ -519,7 +547,7 @@ Decisiones:
 | 3 | Organizaciones, invitaciones, selector, guards RBAC | ✅ |
 | 4 | KPIs y gráficos desde SQL real | ✅ |
 | 5 | Tablas de pedidos, clientes y productos | ✅ |
-| 6 | Reportes CSV y PDF | ⏳ |
+| 6 | Reportes CSV y PDF | ✅ |
 | 7 | Audit log con diffs | ⏳ |
 | 8 | Seed de Acme y Nordwind + modo demo de solo lectura | ⏳ |
 | 9 | RLS con `FORCE`, rendimiento, hardening | ⏳ |

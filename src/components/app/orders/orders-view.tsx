@@ -3,6 +3,7 @@
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { createColumnHelper } from "@tanstack/react-table";
+import { Download } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef } from "react";
@@ -213,6 +214,14 @@ export function OrdersView({
               Clear
             </button>
           ) : null}
+
+          <a
+            href={`/api/org/${slug}/exports/orders${queryString ? `?${queryString}` : ""}`}
+            className="inline-flex h-11 items-center gap-2 rounded-[3px] border border-foreground/25 px-3 font-mono text-[0.5625rem] uppercase tracking-[0.12em] text-foreground transition-colors hover:border-foreground/55 hover:bg-accent"
+          >
+            <Download className="size-3.5" aria-hidden="true" />
+            Export CSV
+          </a>
         </div>
       </div>
 

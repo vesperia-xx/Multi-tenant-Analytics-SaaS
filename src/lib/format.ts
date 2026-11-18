@@ -39,6 +39,11 @@ export function formatNumber(value: number): string {
   return new Intl.NumberFormat("en-US").format(value);
 }
 
+/** Plain decimal for CSV cells: `189.00`, no currency symbol or separators. */
+export function formatAmount(cents: number): string {
+  return (cents / 100).toFixed(2);
+}
+
 export function formatPercent(value: number, digits = 1): string {
   return `${value >= 0 ? "+" : ""}${value.toFixed(digits)}%`;
 }

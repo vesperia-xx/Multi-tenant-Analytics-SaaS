@@ -29,62 +29,99 @@ type RawRow = {
   orders_count: number;
   total_spent_cents: bigint | number | string;
   created_at: Date;
-  total_count: number;
 };
 
 function toNumber(value: bigint | number | string): number {
   return typeof value === "string" ? Number(value) : Number(value);
 }
 
+function customersWhere(organizationId: string, params: CustomersParams): Prisma.Sql {
+  const needle = params.q?.trim() || null;
+
+  return Prisma.sql`
+    c.organization_id = ${organizationId}
+    AND (
+      ${needle}::text IS NULL
+      OR c.name ILIKE '%' || ${needle} || '%'
+      OR c.email ILIKE '%' || ${needle} || '%'
+    )
+    AND (${params.country ?? null}::text IS NULL OR c.country = ${params.country ?? null})
+  `;
+}
+
+function customersOrderBy(params: CustomersParams): Prisma.Sql {
+  return Prisma.raw(
+    `${sortColumns[params.sort]} ${params.direction === "asc" ? "ASC" : "DESC"}, c.id ASC`,
+  );
+}
+
+function toRow(row: RawRow): CustomerListRow {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    country: row.country,
+    ordersCount: row.orders_count,
+    totalSpentCents: toNumber(row.total_spent_cents),
+    createdAt: row.created_at.toISOString(),
+  };
+}
+
+const customerSelect = Prisma.sql`
+  c.id,
+  c.name,
+  c.email,
+  c.country,
+  COUNT(o.id) FILTER (WHERE o.status <> 'CANCELLED')::int AS orders_count,
+  COALESCE(SUM(o.total_cents) FILTER (WHERE o.status = 'PAID'), 0)::bigint AS total_spent_cents,
+  c.created_at
+`;
+
+const customerFrom = Prisma.sql`
+  FROM customers c
+  LEFT JOIN orders o ON o.customer_id = c.id AND o.organization_id = c.organization_id
+`;
+
+const customerGroupBy = Prisma.sql`GROUP BY c.id, c.name, c.email, c.country, c.created_at`;
+
 export async function listCustomers(
   organizationId: string,
   params: CustomersParams,
 ): Promise<ListResult<CustomerListRow>> {
-  const { q, country, sort, direction, page, pageSize } = params;
-  const offset = (page - 1) * pageSize;
-  const needle = q?.trim() || null;
-  const orderBy = Prisma.raw(
-    `${sortColumns[sort]} ${direction === "asc" ? "ASC" : "DESC"}, c.id ASC`,
-  );
+  const offset = (params.page - 1) * params.pageSize;
 
-  const rows = await prisma.$queryRaw<RawRow[]>`
-    SELECT
-      c.id,
-      c.name,
-      c.email,
-      c.country,
-      COUNT(o.id) FILTER (WHERE o.status <> 'CANCELLED')::int AS orders_count,
-      COALESCE(SUM(o.total_cents) FILTER (WHERE o.status = 'PAID'), 0)::bigint AS total_spent_cents,
-      c.created_at,
-      COUNT(*) OVER ()::int AS total_count
-    FROM customers c
-    LEFT JOIN orders o ON o.customer_id = c.id AND o.organization_id = c.organization_id
-    WHERE c.organization_id = ${organizationId}
-      AND (
-        ${needle}::text IS NULL
-        OR c.name ILIKE '%' || ${needle} || '%'
-        OR c.email ILIKE '%' || ${needle} || '%'
-      )
-      AND (${country ?? null}::text IS NULL OR c.country = ${country ?? null})
-    GROUP BY c.id, c.name, c.email, c.country, c.created_at
-    ORDER BY ${orderBy}
-    LIMIT ${pageSize} OFFSET ${offset}
+  const rows = await prisma.$queryRaw<Array<RawRow & { total_count: number }>>`
+    SELECT ${customerSelect}, COUNT(*) OVER ()::int AS total_count
+    ${customerFrom}
+    WHERE ${customersWhere(organizationId, params)}
+    ${customerGroupBy}
+    ORDER BY ${customersOrderBy(params)}
+    LIMIT ${params.pageSize} OFFSET ${offset}
   `;
 
   return {
-    rows: rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      email: row.email,
-      country: row.country,
-      ordersCount: row.orders_count,
-      totalSpentCents: toNumber(row.total_spent_cents),
-      createdAt: row.created_at.toISOString(),
-    })),
+    rows: rows.map(toRow),
     total: rows[0]?.total_count ?? 0,
     page: params.page,
     pageSize: params.pageSize,
   };
+}
+
+export async function exportCustomers(
+  organizationId: string,
+  params: CustomersParams,
+  limit = 10_000,
+): Promise<CustomerListRow[]> {
+  const rows = await prisma.$queryRaw<RawRow[]>`
+    SELECT ${customerSelect}
+    ${customerFrom}
+    WHERE ${customersWhere(organizationId, params)}
+    ${customerGroupBy}
+    ORDER BY ${customersOrderBy(params)}
+    LIMIT ${limit}
+  `;
+
+  return rows.map(toRow);
 }
 
 /** Distinct countries for the filter dropdown, from the data itself. */

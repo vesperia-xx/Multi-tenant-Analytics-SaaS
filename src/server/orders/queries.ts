@@ -14,6 +14,12 @@ export type OrderListRow = {
   customerEmail: string;
 };
 
+export type OrderExportRow = OrderListRow & {
+  subtotalCents: number;
+  discountCents: number;
+  taxCents: number;
+};
+
 export type OrderDetail = {
   id: string;
   number: string;
@@ -41,77 +47,118 @@ const sortColumns: Record<OrdersParams["sort"], string> = {
   customerName: "c.name",
 };
 
+/** Shared by the table and the CSV export, so both see identical filters. */
+function ordersWhere(
+  organizationId: string,
+  timezone: string,
+  params: OrdersParams,
+): Prisma.Sql {
+  const needle = params.q?.trim() || null;
+
+  return Prisma.sql`
+    o.organization_id = ${organizationId}
+    AND (
+      ${needle}::text IS NULL
+      OR o.number ILIKE '%' || ${needle} || '%'
+      OR c.name ILIKE '%' || ${needle} || '%'
+      OR c.email ILIKE '%' || ${needle} || '%'
+    )
+    AND (${params.status ?? null}::text IS NULL OR o.status::text = ${params.status ?? null})
+    AND (${params.from ?? null}::date IS NULL OR o.placed_at >= (${params.from ?? null}::date AT TIME ZONE ${timezone}))
+    AND (${params.to ?? null}::date IS NULL OR o.placed_at < ((${params.to ?? null}::date + 1) AT TIME ZONE ${timezone}))
+  `;
+}
+
+function ordersOrderBy(params: OrdersParams): Prisma.Sql {
+  return Prisma.raw(
+    `${sortColumns[params.sort]} ${params.direction === "asc" ? "ASC" : "DESC"}, o.id ASC`,
+  );
+}
+
 type RawRow = {
   id: string;
   number: string;
   status: OrderListRow["status"];
+  subtotal_cents: number;
+  discount_cents: number;
+  tax_cents: number;
   total_cents: number;
   placed_at: Date;
   customer_name: string;
   customer_email: string;
-  total_count: number;
 };
 
-function toListResult(rows: RawRow[], params: OrdersParams): ListResult<OrderListRow> {
+function toRow(row: RawRow): OrderListRow {
   return {
-    rows: rows.map((row) => ({
-      id: row.id,
-      number: row.number,
-      status: row.status,
-      totalCents: row.total_cents,
-      placedAt: row.placed_at.toISOString(),
-      customerName: row.customer_name,
-      customerEmail: row.customer_email,
-    })),
+    id: row.id,
+    number: row.number,
+    status: row.status,
+    totalCents: row.total_cents,
+    placedAt: row.placed_at.toISOString(),
+    customerName: row.customer_name,
+    customerEmail: row.customer_email,
+  };
+}
+
+const orderSelect = Prisma.sql`
+  o.id,
+  o.number,
+  o.status::text AS status,
+  o.subtotal_cents,
+  o.discount_cents,
+  o.tax_cents,
+  o.total_cents,
+  o.placed_at,
+  c.name AS customer_name,
+  c.email AS customer_email
+`;
+
+export async function listOrders(
+  organizationId: string,
+  timezone: string,
+  params: OrdersParams,
+): Promise<ListResult<OrderListRow>> {
+  const offset = (params.page - 1) * params.pageSize;
+
+  const rows = await prisma.$queryRaw<Array<RawRow & { total_count: number }>>`
+    SELECT ${orderSelect}, COUNT(*) OVER ()::int AS total_count
+    FROM orders o
+    JOIN customers c ON c.id = o.customer_id AND c.organization_id = o.organization_id
+    WHERE ${ordersWhere(organizationId, timezone, params)}
+    ORDER BY ${ordersOrderBy(params)}
+    LIMIT ${params.pageSize} OFFSET ${offset}
+  `;
+
+  return {
+    rows: rows.map(toRow),
     total: rows[0]?.total_count ?? 0,
     page: params.page,
     pageSize: params.pageSize,
   };
 }
 
-/**
- * Orders are searched by number and by the joined customer, which is why the
- * count is a window function: one pass, no second query for the total.
- */
-export async function listOrders(
+/** Export ignores pagination and stops at a hard row cap. */
+export async function exportOrders(
   organizationId: string,
   timezone: string,
   params: OrdersParams,
-): Promise<ListResult<OrderListRow>> {
-  const { q, status, from, to, sort, direction, page, pageSize } = params;
-  const offset = (page - 1) * pageSize;
-  const needle = q?.trim() || null;
-  const orderBy = Prisma.raw(
-    `${sortColumns[sort]} ${direction === "asc" ? "ASC" : "DESC"}, o.id ASC`,
-  );
-
+  limit = 10_000,
+): Promise<OrderExportRow[]> {
   const rows = await prisma.$queryRaw<RawRow[]>`
-    SELECT
-      o.id,
-      o.number,
-      o.status::text AS status,
-      o.total_cents,
-      o.placed_at,
-      c.name AS customer_name,
-      c.email AS customer_email,
-      COUNT(*) OVER ()::int AS total_count
+    SELECT ${orderSelect}
     FROM orders o
     JOIN customers c ON c.id = o.customer_id AND c.organization_id = o.organization_id
-    WHERE o.organization_id = ${organizationId}
-      AND (
-        ${needle}::text IS NULL
-        OR o.number ILIKE '%' || ${needle} || '%'
-        OR c.name ILIKE '%' || ${needle} || '%'
-        OR c.email ILIKE '%' || ${needle} || '%'
-      )
-      AND (${status ?? null}::text IS NULL OR o.status::text = ${status ?? null})
-      AND (${from ?? null}::date IS NULL OR o.placed_at >= (${from ?? null}::date AT TIME ZONE ${timezone}))
-      AND (${to ?? null}::date IS NULL OR o.placed_at < ((${to ?? null}::date + 1) AT TIME ZONE ${timezone}))
-    ORDER BY ${orderBy}
-    LIMIT ${pageSize} OFFSET ${offset}
+    WHERE ${ordersWhere(organizationId, timezone, params)}
+    ORDER BY ${ordersOrderBy(params)}
+    LIMIT ${limit}
   `;
 
-  return toListResult(rows, params);
+  return rows.map((row) => ({
+    ...toRow(row),
+    subtotalCents: row.subtotal_cents,
+    discountCents: row.discount_cents,
+    taxCents: row.tax_cents,
+  }));
 }
 
 export async function getOrderDetail(

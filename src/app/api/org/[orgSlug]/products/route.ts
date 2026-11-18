@@ -1,24 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { can } from "@/lib/permissions";
+import { searchParamsRecord } from "@/lib/request-params";
 import { productsParamsSchema } from "@/lib/validation/table";
 import { listProducts } from "@/server/products/queries";
 import { getApiOrgContext } from "@/server/org/context";
-
-function toSearchParams(request: NextRequest): Record<string, string | string[]> {
-  const record: Record<string, string | string[]> = {};
-  request.nextUrl.searchParams.forEach((value, key) => {
-    const existing = record[key];
-    if (existing === undefined) {
-      record[key] = value;
-    } else if (Array.isArray(existing)) {
-      existing.push(value);
-    } else {
-      record[key] = [existing, value];
-    }
-  });
-  return record;
-}
 
 export async function GET(
   request: NextRequest,
@@ -38,7 +24,7 @@ export async function GET(
     return NextResponse.json({ error: "Your role cannot read products." }, { status: 403 });
   }
 
-  const parsed = productsParamsSchema.safeParse(toSearchParams(request));
+  const parsed = productsParamsSchema.safeParse(searchParamsRecord(request));
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid query parameters." }, { status: 400 });
   }

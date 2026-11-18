@@ -2,23 +2,9 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { listCustomers } from "@/server/customers/queries";
 import { can } from "@/lib/permissions";
+import { searchParamsRecord } from "@/lib/request-params";
 import { customersParamsSchema } from "@/lib/validation/table";
 import { getApiOrgContext } from "@/server/org/context";
-
-function toSearchParams(request: NextRequest): Record<string, string | string[]> {
-  const record: Record<string, string | string[]> = {};
-  request.nextUrl.searchParams.forEach((value, key) => {
-    const existing = record[key];
-    if (existing === undefined) {
-      record[key] = value;
-    } else if (Array.isArray(existing)) {
-      existing.push(value);
-    } else {
-      record[key] = [existing, value];
-    }
-  });
-  return record;
-}
 
 export async function GET(
   request: NextRequest,
@@ -38,7 +24,7 @@ export async function GET(
     return NextResponse.json({ error: "Your role cannot read customers." }, { status: 403 });
   }
 
-  const parsed = customersParamsSchema.safeParse(toSearchParams(request));
+  const parsed = customersParamsSchema.safeParse(searchParamsRecord(request));
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid query parameters." }, { status: 400 });
   }

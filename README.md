@@ -4,7 +4,7 @@
 
 Vortex Metrics gives every organization its own workspace, its own data and its own permissions. Dashboards, tables and exports are powered by real SQL aggregates over a seeded PostgreSQL dataset — no mocks at runtime, no client-side math.
 
-> **Status:** Phase 5 of 10 — orders, customers and products tables with search, filters, sorting and pagination.
+> **Status:** Phase 6 of 10 — CSV exports and the PDF analytics report.
 > See the [roadmap](#roadmap) for what ships next.
 
 ---
@@ -34,7 +34,7 @@ Vortex Metrics is built around those questions.
 | Charts | Recharts |
 | Validation | Zod |
 | Auth | Custom opaque, database-backed sessions (no third-party auth) |
-| Reports | Streaming CSV + PDF generated in a Node runtime |
+| Reports | CSV + PDF (`@react-pdf/renderer`) generated in a Node runtime |
 | Tests | Vitest + Testing Library, Playwright (E2E) |
 | Infra | Docker Compose locally, Vercel + Neon in production |
 
@@ -76,7 +76,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the ERD, RBAC matrix and 
 | 3 | Organizations, memberships, invitations, org switcher, RBAC guards | ✅ |
 | 4 | Dashboard KPIs and analytics charts from real SQL | ✅ |
 | 5 | Orders, customers and products tables (search, filters, sorting, pagination) | ✅ |
-| 6 | CSV and PDF reports | ⏳ |
+| 6 | CSV and PDF reports | ✅ |
 | 7 | Audit log with before/after diffs | ⏳ |
 | 8 | Seeded demo tenants + read-only demo mode | ⏳ |
 | 9 | Performance work, PostgreSQL RLS with FORCE, security hardening | ⏳ |
@@ -174,7 +174,7 @@ src/
     (auth)/               login, register, forgot-password, reset-password, invite/[token]
     app/                  account area: all workspaces and active sessions
     app/[orgSlug]/        tenant-scoped shell, analytics dashboard, tables and settings
-    api/org/[orgSlug]/    authenticated JSON endpoints for the interactive tables
+    api/org/[orgSlug]/    authenticated JSON endpoints and CSV/PDF exports
     page.tsx              Marketing landing page
     layout.tsx            Root layout, theme provider, toasts
     globals.css           Design tokens (oklch) + utilities
@@ -198,6 +198,7 @@ src/
     customers/            Customer list query
     db/client.ts          Prisma client with pg / Neon adapters
     email/                Resend delivery (optional)
+    exports/              CSV/PDF HTTP helpers and the printed report
     orders/               Order list and detail queries
     org/                  Tenant context, invitations, roles and Server Actions
     products/             Product and category queries
@@ -333,6 +334,30 @@ line items and totals.
 TanStack Table v9 is used only for the header/row model; sorting and pagination are manual because
 PostgreSQL owns the page. That keeps one source of truth and avoids sorting 10 of 822 rows in the
 browser.
+
+## Exports
+
+Two export paths, both generated from the same SQL as the screen:
+
+| Export | Endpoint | Contents |
+| --- | --- | --- |
+| Orders CSV | `/api/org/[orgSlug]/exports/orders` | Current filters and sort, every matching row (not just the page), cap 10 000 |
+| Customers CSV | `…/exports/customers` | Search/country filters, spend and order counts |
+| Products CSV | `…/exports/products` | Search/status/category filters, price and cost |
+| Analytics PDF | `…/exports/report?range=…` | KPIs with deltas, revenue by bucket, top products, status split and acquisition |
+
+CSV files use a UTF-8 BOM (Excel opens accents correctly), CRLF line endings, decimal money
+(`189.00`) and ISO timestamps. Text cells that start with `=`, `+`, `@`, tab or CR are prefixed with
+an apostrophe so a spreadsheet never executes them as formulas; numeric values such as `-12.50` are
+left intact.
+
+The PDF is rendered in a Node runtime with `@react-pdf/renderer` from the same
+`getDashboardData` result as the dashboard, so the printed report and the chart cannot disagree.
+
+Every export re-checks session and membership (401/404), requires the `export` permission (all four
+roles have it), is limited to 20 per user per workspace per hour, returns `private, no-store`, and
+writes a `report.exported` entry to the audit ledger with the format, resource, row count and
+filters.
 
 ## Deployment
 

@@ -4,6 +4,7 @@ import {
   formatNumber,
   formatRangeLabel,
 } from "@/lib/format";
+import { Download } from "lucide-react";
 import { parseAnalyticsQuery } from "@/lib/validation/analytics";
 import { getDashboardData } from "@/server/analytics/queries";
 import { resolveRange, todayIn } from "@/server/analytics/range";
@@ -94,6 +95,15 @@ export async function AnalyticsDashboard({
   const rangeLabel = formatRangeLabel(range.fromDay, range.toDay);
   const hint = `vs prev. ${range.days}d`;
 
+  const reportParams = new URLSearchParams();
+  reportParams.set("range", query.range);
+  if (query.range === "custom" && query.from && query.to) {
+    reportParams.set("from", query.from);
+    reportParams.set("to", query.to);
+  }
+  if (query.granularity) reportParams.set("granularity", query.granularity);
+  const reportHref = `/api/org/${orgSlug}/exports/report?${reportParams.toString()}`;
+
   const revenueData = data.revenueSeries.map((point) => ({
     label: formatBucketLabel(point.bucket, range.granularity),
     revenue: point.revenueCents,
@@ -135,6 +145,13 @@ export async function AnalyticsDashboard({
             <p className="mt-1 font-mono text-[0.5rem] uppercase tracking-[0.14em] text-muted-foreground">
               compared with {range.days} days before
             </p>
+            <a
+              href={reportHref}
+              className="mt-3 inline-flex items-center gap-2 rounded-[3px] border border-foreground/25 px-3 py-2 font-mono text-[0.5625rem] uppercase tracking-[0.12em] text-foreground transition-colors hover:border-foreground/55 hover:bg-accent"
+            >
+              <Download className="size-3.5" aria-hidden="true" />
+              PDF report
+            </a>
           </div>
         </div>
       </header>
