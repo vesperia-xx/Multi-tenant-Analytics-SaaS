@@ -20,6 +20,7 @@ import {
 } from "@/lib/validation/org";
 import { collectFieldErrors } from "@/lib/validation/common";
 import { prisma } from "@/server/db/client";
+import { setTenantContext } from "@/server/db/tenant";
 import { sendInvitationEmail } from "@/server/email/send";
 import { getViewer, requestMetadata, requireViewer, setActiveOrganization } from "@/server/auth/session";
 import { generateToken, hashToken } from "@/server/auth/tokens";
@@ -84,6 +85,8 @@ export async function createWorkspaceAction(
         data: { name: parsed.data.name, slug: workspaceSlug },
         select: { id: true, name: true, slug: true },
       });
+
+      await setTenantContext(tx, organization.id);
 
       await tx.membership.create({
         data: {
@@ -548,6 +551,8 @@ export async function acceptInvitationAction(
   const { ip, userAgent } = await requestMetadata();
 
   await prisma.$transaction(async (tx) => {
+    await setTenantContext(tx, invitation.organization.id);
+
     const existing = await tx.membership.findUnique({
       where: {
         userId_organizationId: {

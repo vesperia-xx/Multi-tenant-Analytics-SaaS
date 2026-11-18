@@ -7,6 +7,7 @@ import { DEMO_EMAIL, DEMO_PASSWORD } from "../src/lib/demo";
 import { hashPassword } from "../src/server/auth/password";
 import { hashToken } from "../src/server/auth/tokens";
 import { prisma } from "../src/server/db/client";
+import { allowAuditMaintenance, setTenantContext, withTenant, type TenantDb } from "../src/server/db/tenant";
 
 /**
  * Seed script.
@@ -192,177 +193,182 @@ async function seedAnalytics(
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const DAYS = blueprint.days;
 
-  await prisma.$transaction([
-    prisma.orderItem.deleteMany({ where: { organizationId } }),
-    prisma.order.deleteMany({ where: { organizationId } }),
-    prisma.customer.deleteMany({ where: { organizationId } }),
-    prisma.product.deleteMany({ where: { organizationId } }),
-    prisma.category.deleteMany({ where: { organizationId } }),
-    prisma.trafficDaily.deleteMany({ where: { organizationId } }),
-  ]);
+  return prisma.$transaction(
+    async (tx) => {
+      await setTenantContext(tx, organizationId);
 
-  const categories = await Promise.all(
-    blueprint.categories.map((name) => prisma.category.create({ data: { organizationId, name } })),
-  );
+      await tx.orderItem.deleteMany({ where: { organizationId } });
+      await tx.order.deleteMany({ where: { organizationId } });
+      await tx.customer.deleteMany({ where: { organizationId } });
+      await tx.product.deleteMany({ where: { organizationId } });
+      await tx.category.deleteMany({ where: { organizationId } });
+      await tx.trafficDaily.deleteMany({ where: { organizationId } });
 
-  const products = await Promise.all(
-    blueprint.products.map((product) =>
-      prisma.product.create({
-        data: {
-          organizationId,
-          categoryId: categories[product.category]!.id,
-          sku: product.sku,
-          name: product.name,
-          priceCents: product.priceCents,
-          costCents: product.costCents,
-        },
-      }),
-    ),
-  );
+      const categories = await Promise.all(
+        blueprint.categories.map((name) => tx.category.create({ data: { organizationId, name } })),
+      );
 
-  const customers = await Promise.all(
-    Array.from({ length: blueprint.customerCount }, (_, index) => {
-      const first = FIRST_NAMES[index % FIRST_NAMES.length]!;
-      const last = LAST_NAMES[Math.floor(index / FIRST_NAMES.length) % LAST_NAMES.length]!;
-      const name = `${first} ${last}`;
+      const products = await Promise.all(
+        blueprint.products.map((product) =>
+          tx.product.create({
+            data: {
+              organizationId,
+              categoryId: categories[product.category]!.id,
+              sku: product.sku,
+              name: product.name,
+              priceCents: product.priceCents,
+              costCents: product.costCents,
+            },
+          }),
+        ),
+      );
 
-      return prisma.customer.create({
-        data: {
-          organizationId,
-          name,
-          email: `${handleOf(name)}@${blueprint.domain}`,
-          country: pick(COUNTRIES),
-          createdAt: new Date(today.getTime() - between(0, DAYS) * 86_400_000),
-        },
-      });
-    }),
-  );
+      const customers = await Promise.all(
+        Array.from({ length: blueprint.customerCount }, (_, index) => {
+          const first = FIRST_NAMES[index % FIRST_NAMES.length]!;
+          const last = LAST_NAMES[Math.floor(index / FIRST_NAMES.length) % LAST_NAMES.length]!;
+          const name = `${first} ${last}`;
 
-  const orders: Array<{
-    id: string;
-    organizationId: string;
-    customerId: string;
-    number: string;
-    status: "PENDING" | "PAID" | "REFUNDED" | "CANCELLED";
-    subtotalCents: number;
-    discountCents: number;
-    taxCents: number;
-    totalCents: number;
-    placedAt: Date;
-  }> = [];
+          return tx.customer.create({
+            data: {
+              organizationId,
+              name,
+              email: `${handleOf(name)}@${blueprint.domain}`,
+              country: pick(COUNTRIES),
+              createdAt: new Date(today.getTime() - between(0, DAYS) * 86_400_000),
+            },
+          });
+        }),
+      );
 
-  const items: Array<{
-    id: string;
-    organizationId: string;
-    orderId: string;
-    productId: string;
-    quantity: number;
-    unitPriceCents: number;
-    lineTotalCents: number;
-  }> = [];
+      const orders: Array<{
+        id: string;
+        organizationId: string;
+        customerId: string;
+        number: string;
+        status: "PENDING" | "PAID" | "REFUNDED" | "CANCELLED";
+        subtotalCents: number;
+        discountCents: number;
+        taxCents: number;
+        totalCents: number;
+        placedAt: Date;
+      }> = [];
 
-  let orderNumber = 10_000;
+      const items: Array<{
+        id: string;
+        organizationId: string;
+        orderId: string;
+        productId: string;
+        quantity: number;
+        unitPriceCents: number;
+        lineTotalCents: number;
+      }> = [];
 
-  for (let dayOffset = DAYS - 1; dayOffset >= 0; dayOffset -= 1) {
-    const date = new Date(today.getTime() - dayOffset * 86_400_000);
-    const weekday = date.getUTCDay();
-    const weekend = weekday === 0 || weekday === 6;
-    const trend = 1 + (DAYS - dayOffset) / (DAYS / blueprint.trendBoost);
-    const count = Math.max(
-      1,
-      Math.round(between(blueprint.orders[0], blueprint.orders[1]) * trend * (weekend ? blueprint.weekendFactor : 1) + rng()),
-    );
+      let orderNumber = 10_000;
 
-    for (let index = 0; index < count; index += 1) {
-      const customer = pick(customers);
-      const lineCount = between(1, blueprint.maxLines);
-      const chosen = new Set<string>();
+      for (let dayOffset = DAYS - 1; dayOffset >= 0; dayOffset -= 1) {
+        const date = new Date(today.getTime() - dayOffset * 86_400_000);
+        const weekday = date.getUTCDay();
+        const weekend = weekday === 0 || weekday === 6;
+        const trend = 1 + (DAYS - dayOffset) / (DAYS / blueprint.trendBoost);
+        const count = Math.max(
+          1,
+          Math.round(between(blueprint.orders[0], blueprint.orders[1]) * trend * (weekend ? blueprint.weekendFactor : 1) + rng()),
+        );
 
-      let subtotal = 0;
-      const orderId = randomUUID();
+        for (let index = 0; index < count; index += 1) {
+          const customer = pick(customers);
+          const lineCount = between(1, blueprint.maxLines);
+          const chosen = new Set<string>();
 
-      for (let line = 0; line < lineCount; line += 1) {
-        const product = pick(products);
-        if (chosen.has(product.id)) continue;
-        chosen.add(product.id);
+          let subtotal = 0;
+          const orderId = randomUUID();
 
-        const quantity = between(1, 3);
-        const lineTotal = product.priceCents * quantity;
-        subtotal += lineTotal;
+          for (let line = 0; line < lineCount; line += 1) {
+            const product = pick(products);
+            if (chosen.has(product.id)) continue;
+            chosen.add(product.id);
 
-        items.push({
-          id: randomUUID(),
-          organizationId,
-          orderId,
-          productId: product.id,
-          quantity,
-          unitPriceCents: product.priceCents,
-          lineTotalCents: lineTotal,
-        });
+            const quantity = between(1, 3);
+            const lineTotal = product.priceCents * quantity;
+            subtotal += lineTotal;
+
+            items.push({
+              id: randomUUID(),
+              organizationId,
+              orderId,
+              productId: product.id,
+              quantity,
+              unitPriceCents: product.priceCents,
+              lineTotalCents: lineTotal,
+            });
+          }
+
+          const discount = rng() < 0.25 ? Math.round(subtotal * 0.1) : 0;
+          const tax = Math.round((subtotal - discount) * 0.08);
+          const roll = rng();
+          const status =
+            roll < 0.7 ? "PAID" : roll < 0.82 ? "PENDING" : roll < 0.9 ? "REFUNDED" : "CANCELLED";
+
+          const placedAt = new Date(date);
+          placedAt.setUTCHours(between(8, 21), between(0, 59), between(0, 59), 0);
+
+          orders.push({
+            id: orderId,
+            organizationId,
+            customerId: customer.id,
+            number: `ORD-${orderNumber++}`,
+            status,
+            subtotalCents: subtotal,
+            discountCents: discount,
+            taxCents: tax,
+            totalCents: subtotal - discount + tax,
+            placedAt,
+          });
+        }
       }
 
-      const discount = rng() < 0.25 ? Math.round(subtotal * 0.1) : 0;
-      const tax = Math.round((subtotal - discount) * 0.08);
-      const roll = rng();
-      const status =
-        roll < 0.7 ? "PAID" : roll < 0.82 ? "PENDING" : roll < 0.9 ? "REFUNDED" : "CANCELLED";
+      await tx.order.createMany({ data: orders });
+      await tx.orderItem.createMany({ data: items });
 
-      const placedAt = new Date(date);
-      placedAt.setUTCHours(between(8, 21), between(0, 59), between(0, 59), 0);
+      const traffic = Array.from({ length: DAYS }, (_, index) => {
+        const date = new Date(today.getTime() - (DAYS - 1 - index) * 86_400_000);
+        const weekday = date.getUTCDay();
+        const weekend = weekday === 0 || weekday === 6;
+        const visitors = Math.round(
+          between(blueprint.traffic[0], blueprint.traffic[1]) * (weekend ? 0.7 : 1) * (1 + index / (DAYS * 2)),
+        );
 
-      orders.push({
-        id: orderId,
-        organizationId,
-        customerId: customer.id,
-        number: `ORD-${orderNumber++}`,
-        status,
-        subtotalCents: subtotal,
-        discountCents: discount,
-        taxCents: tax,
-        totalCents: subtotal - discount + tax,
-        placedAt,
+        return {
+          organizationId,
+          date,
+          visitors,
+          sessions: Math.round(visitors * (1.2 + rng() * 0.4)),
+        };
       });
-    }
-  }
 
-  await prisma.order.createMany({ data: orders });
-  await prisma.orderItem.createMany({ data: items });
+      await tx.trafficDaily.createMany({ data: traffic });
 
-  const traffic = Array.from({ length: DAYS }, (_, index) => {
-    const date = new Date(today.getTime() - (DAYS - 1 - index) * 86_400_000);
-    const weekday = date.getUTCDay();
-    const weekend = weekday === 0 || weekday === 6;
-    const visitors = Math.round(
-      between(blueprint.traffic[0], blueprint.traffic[1]) * (weekend ? 0.7 : 1) * (1 + index / (DAYS * 2)),
-    );
+      const revenue = orders
+        .filter((order) => order.status === "PAID")
+        .reduce((sum, order) => sum + order.totalCents, 0);
 
-    return {
-      organizationId,
-      date,
-      visitors,
-      sessions: Math.round(visitors * (1.2 + rng() * 0.4)),
-    };
-  });
+      console.log(`Seeded workspace ${organization.name} (${organization.slug})`);
+      console.log(
+        `  ${products.length} products · ${customers.length} customers · ${orders.length} orders · ${items.length} lines · ${traffic.length} traffic days`,
+      );
+      console.log(`  paid revenue: ${(revenue / 100).toFixed(2)} ${organization.currency}`);
 
-  await prisma.trafficDaily.createMany({ data: traffic });
-
-  const revenue = orders
-    .filter((order) => order.status === "PAID")
-    .reduce((sum, order) => sum + order.totalCents, 0);
-
-  console.log(`Seeded workspace ${organization.name} (${organization.slug})`);
-  console.log(
-    `  ${products.length} products · ${customers.length} customers · ${orders.length} orders · ${items.length} lines · ${traffic.length} traffic days`,
+      return {
+        products: products.length,
+        customers: customers.length,
+        orders: orders.length,
+        lines: items.length,
+        traffic: traffic.length,
+      };
+    },
+    { maxWait: 10_000, timeout: 120_000 },
   );
-  console.log(`  paid revenue: ${(revenue / 100).toFixed(2)} ${organization.currency}`);
-
-  return {
-    products: products.length,
-    customers: customers.length,
-    orders: orders.length,
-    lines: items.length,
-    traffic: traffic.length,
-  };
 }
 
 async function upsertDemoUser(
@@ -389,6 +395,7 @@ async function upsertDemoUser(
 }
 
 async function seedDemoAudit(
+  db: TenantDb,
   organizationId: string,
   blueprint: DemoBlueprint,
   actors: { demoId: string; people: Map<string, { id: string; name: string; email: string }> },
@@ -411,7 +418,7 @@ async function seedDemoAudit(
     })),
   ];
 
-  await prisma.auditLog.createMany({
+  await db.auditLog.createMany({
     data: [
       {
         organizationId,
@@ -591,14 +598,18 @@ async function seedDemo(): Promise<void> {
       select: { id: true },
     });
 
-    await prisma.auditLog.deleteMany({ where: { organizationId: organization.id } });
-    await seedDemoAudit(
-      organization.id,
-      blueprint,
-      { demoId: demoUser.id, people },
-      organizationCreatedAt,
-      blueprint.pendingInvite,
-    );
+    await withTenant(organization.id, async (db) => {
+      await allowAuditMaintenance(db);
+      await db.auditLog.deleteMany({ where: { organizationId: organization.id } });
+      await seedDemoAudit(
+        db,
+        organization.id,
+        blueprint,
+        { demoId: demoUser.id, people },
+        organizationCreatedAt,
+        blueprint.pendingInvite,
+      );
+    });
 
     console.log(
       `  members: ${[DEMO_EMAIL, ...blueprint.people.map((person) => person.email)].join(", ")}`,

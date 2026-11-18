@@ -2,7 +2,7 @@ import "server-only";
 
 import { Prisma } from "@/generated/prisma/client";
 import type { Granularity } from "@/lib/validation/analytics";
-import { prisma } from "@/server/db/client";
+import { withTenant, type TenantDb } from "@/server/db/tenant";
 
 type Numeric = number | bigint | string | null;
 
@@ -76,12 +76,13 @@ type TotalsRow = {
  * `placed_at` is a timestamptz, and `date AT TIME ZONE zone` is local midnight.
  */
 async function totalsFor(
+  db: TenantDb,
   organizationId: string,
   timezone: string,
   fromDay: string,
   toDay: string,
 ): Promise<TotalsRow> {
-  const [row] = await prisma.$queryRaw<TotalsRow[]>`
+  const [row] = await db.$queryRaw<TotalsRow[]>`
     SELECT
       COALESCE(SUM(total_cents) FILTER (WHERE status = 'PAID'), 0)::bigint AS revenue_cents,
       COUNT(*) FILTER (WHERE status = 'PAID')::int AS paid_orders,
@@ -113,6 +114,7 @@ function kpi(current: number, previous: number): KpiValue {
 }
 
 async function revenueSeries(
+  db: TenantDb,
   organizationId: string,
   timezone: string,
   fromDay: string,
@@ -122,7 +124,7 @@ async function revenueSeries(
   const unit = Prisma.raw(`'${granularity}'`);
   const step = Prisma.raw(`interval '1 ${granularity}'`);
 
-  const rows = await prisma.$queryRaw<
+  const rows = await db.$queryRaw<
     Array<{ bucket: string; revenue_cents: Numeric; orders: Numeric }>
   >`
     WITH buckets AS (
@@ -160,12 +162,13 @@ async function revenueSeries(
 }
 
 async function statusBreakdown(
+  db: TenantDb,
   organizationId: string,
   timezone: string,
   fromDay: string,
   toDay: string,
 ): Promise<StatusSlice[]> {
-  const rows = await prisma.$queryRaw<
+  const rows = await db.$queryRaw<
     Array<{ status: StatusSlice["status"]; count: Numeric; total_cents: Numeric }>
   >`
     SELECT status, COUNT(*)::int AS count, COALESCE(SUM(total_cents), 0)::bigint AS total_cents
@@ -187,13 +190,14 @@ async function statusBreakdown(
 }
 
 async function topProducts(
+  db: TenantDb,
   organizationId: string,
   timezone: string,
   fromDay: string,
   toDay: string,
   limit = 5,
 ): Promise<TopProduct[]> {
-  const rows = await prisma.$queryRaw<
+  const rows = await db.$queryRaw<
     Array<{ id: string; name: string; sku: string; revenue_cents: Numeric; units: Numeric }>
   >`
     SELECT
@@ -224,6 +228,7 @@ async function topProducts(
 }
 
 async function trafficSeries(
+  db: TenantDb,
   organizationId: string,
   fromDay: string,
   toDay: string,
@@ -231,7 +236,7 @@ async function trafficSeries(
 ): Promise<TrafficPoint[]> {
   const unit = Prisma.raw(`'${granularity}'`);
 
-  return prisma.$queryRaw<TrafficPoint[]>`
+  return db.$queryRaw<TrafficPoint[]>`
     SELECT
       to_char(date_trunc(${unit}, date), 'YYYY-MM-DD') AS bucket,
       COALESCE(SUM(visitors), 0)::int AS visitors,
@@ -262,46 +267,48 @@ export async function getDashboardData({
   previousToDay: string;
   granularity: Granularity;
 }): Promise<DashboardData> {
-  const [
-    current,
-    previous,
-    revenuePoints,
-    statuses,
-    products,
-    traffic,
-  ] = await Promise.all([
-    totalsFor(organizationId, timezone, fromDay, toDay),
-    totalsFor(organizationId, timezone, previousFromDay, previousToDay),
-    revenueSeries(organizationId, timezone, fromDay, toDay, granularity),
-    statusBreakdown(organizationId, timezone, fromDay, toDay),
-    topProducts(organizationId, timezone, fromDay, toDay),
-    trafficSeries(organizationId, fromDay, toDay, granularity),
-  ]);
+  return withTenant(organizationId, async (db) => {
+    const [
+      current,
+      previous,
+      revenuePoints,
+      statuses,
+      products,
+      traffic,
+    ] = await Promise.all([
+      totalsFor(db, organizationId, timezone, fromDay, toDay),
+      totalsFor(db, organizationId, timezone, previousFromDay, previousToDay),
+      revenueSeries(db, organizationId, timezone, fromDay, toDay, granularity),
+      statusBreakdown(db, organizationId, timezone, fromDay, toDay),
+      topProducts(db, organizationId, timezone, fromDay, toDay),
+      trafficSeries(db, organizationId, fromDay, toDay, granularity),
+    ]);
 
-  const visitors = traffic.reduce((sum, point) => sum + point.visitors, 0);
-  const sessions = traffic.reduce((sum, point) => sum + point.sessions, 0);
-  const paidOrders = toNumber(current.paid_orders);
+    const visitors = traffic.reduce((sum, point) => sum + point.visitors, 0);
+    const sessions = traffic.reduce((sum, point) => sum + point.sessions, 0);
+    const paidOrders = toNumber(current.paid_orders);
 
-  return {
-    revenue: kpi(toNumber(current.revenue_cents), toNumber(previous.revenue_cents)),
-    orders: kpi(toNumber(current.orders), toNumber(previous.orders)),
-    averageOrder: kpi(
-      toNumber(current.average_order_cents),
-      toNumber(previous.average_order_cents),
-    ),
-    newCustomers: kpi(
-      toNumber(current.new_customers),
-      toNumber(previous.new_customers),
-    ),
-    revenueSeries: revenuePoints,
-    statusBreakdown: statuses,
-    topProducts: products,
-    trafficSeries: traffic,
-    traffic: {
-      visitors,
-      sessions,
-      conversionPercent: sessions === 0 ? null : (paidOrders / sessions) * 100,
-    },
-    paidOrders,
-  };
+    return {
+      revenue: kpi(toNumber(current.revenue_cents), toNumber(previous.revenue_cents)),
+      orders: kpi(toNumber(current.orders), toNumber(previous.orders)),
+      averageOrder: kpi(
+        toNumber(current.average_order_cents),
+        toNumber(previous.average_order_cents),
+      ),
+      newCustomers: kpi(
+        toNumber(current.new_customers),
+        toNumber(previous.new_customers),
+      ),
+      revenueSeries: revenuePoints,
+      statusBreakdown: statuses,
+      topProducts: products,
+      trafficSeries: traffic,
+      traffic: {
+        visitors,
+        sessions,
+        conversionPercent: sessions === 0 ? null : (paidOrders / sessions) * 100,
+      },
+      paidOrders,
+    };
+  });
 }

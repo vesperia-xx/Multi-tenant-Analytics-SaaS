@@ -1,7 +1,7 @@
 import "server-only";
 
 import { Prisma } from "@/generated/prisma/client";
-import { prisma } from "@/server/db/client";
+import { withTenant } from "@/server/db/tenant";
 import type { CustomersParams, ListResult } from "@/lib/validation/table";
 
 export type CustomerListRow = {
@@ -90,21 +90,23 @@ export async function listCustomers(
 ): Promise<ListResult<CustomerListRow>> {
   const offset = (params.page - 1) * params.pageSize;
 
-  const rows = await prisma.$queryRaw<Array<RawRow & { total_count: number }>>`
-    SELECT ${customerSelect}, COUNT(*) OVER ()::int AS total_count
-    ${customerFrom}
-    WHERE ${customersWhere(organizationId, params)}
-    ${customerGroupBy}
-    ORDER BY ${customersOrderBy(params)}
-    LIMIT ${params.pageSize} OFFSET ${offset}
-  `;
+  return withTenant(organizationId, async (db) => {
+    const rows = await db.$queryRaw<Array<RawRow & { total_count: number }>>`
+      SELECT ${customerSelect}, COUNT(*) OVER ()::int AS total_count
+      ${customerFrom}
+      WHERE ${customersWhere(organizationId, params)}
+      ${customerGroupBy}
+      ORDER BY ${customersOrderBy(params)}
+      LIMIT ${params.pageSize} OFFSET ${offset}
+    `;
 
-  return {
-    rows: rows.map(toRow),
-    total: rows[0]?.total_count ?? 0,
-    page: params.page,
-    pageSize: params.pageSize,
-  };
+    return {
+      rows: rows.map(toRow),
+      total: rows[0]?.total_count ?? 0,
+      page: params.page,
+      pageSize: params.pageSize,
+    };
+  });
 }
 
 export async function exportCustomers(
@@ -112,26 +114,30 @@ export async function exportCustomers(
   params: CustomersParams,
   limit = 10_000,
 ): Promise<CustomerListRow[]> {
-  const rows = await prisma.$queryRaw<RawRow[]>`
-    SELECT ${customerSelect}
-    ${customerFrom}
-    WHERE ${customersWhere(organizationId, params)}
-    ${customerGroupBy}
-    ORDER BY ${customersOrderBy(params)}
-    LIMIT ${limit}
-  `;
+  return withTenant(organizationId, async (db) => {
+    const rows = await db.$queryRaw<RawRow[]>`
+      SELECT ${customerSelect}
+      ${customerFrom}
+      WHERE ${customersWhere(organizationId, params)}
+      ${customerGroupBy}
+      ORDER BY ${customersOrderBy(params)}
+      LIMIT ${limit}
+    `;
 
-  return rows.map(toRow);
+    return rows.map(toRow);
+  });
 }
 
 /** Distinct countries for the filter dropdown, from the data itself. */
 export async function listCountries(organizationId: string): Promise<string[]> {
-  const rows = await prisma.customer.findMany({
-    where: { organizationId, NOT: { country: null } },
-    select: { country: true },
-    distinct: ["country"],
-    orderBy: { country: "asc" },
-  });
+  return withTenant(organizationId, async (db) => {
+    const rows = await db.customer.findMany({
+      where: { organizationId, NOT: { country: null } },
+      select: { country: true },
+      distinct: ["country"],
+      orderBy: { country: "asc" },
+    });
 
-  return rows.map((row) => row.country as string);
+    return rows.map((row) => row.country as string);
+  });
 }

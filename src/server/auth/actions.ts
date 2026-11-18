@@ -16,6 +16,7 @@ import {
   resetPasswordSchema,
 } from "@/lib/validation/auth";
 import { prisma } from "@/server/db/client";
+import { setTenantContext } from "@/server/db/tenant";
 import { sendPasswordResetEmail } from "@/server/email/send";
 import { isReadOnlyAccount } from "@/server/org/demo";
 import { resolveUniqueSlug } from "@/server/org/slug";
@@ -158,6 +159,8 @@ export async function registerAction(
         data: { name: organizationName, slug },
         select: { id: true, name: true, slug: true },
       });
+
+      await setTenantContext(tx, organization.id);
 
       await tx.membership.create({
         data: { userId: user.id, organizationId: organization.id, role: Role.OWNER },

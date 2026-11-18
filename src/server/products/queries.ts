@@ -1,7 +1,7 @@
 import "server-only";
 
 import { Prisma } from "@/generated/prisma/client";
-import { prisma } from "@/server/db/client";
+import { withTenant } from "@/server/db/tenant";
 import type { ListResult, ProductsParams } from "@/lib/validation/table";
 
 export type ProductListRow = {
@@ -89,20 +89,22 @@ export async function listProducts(
 ): Promise<ListResult<ProductListRow>> {
   const offset = (params.page - 1) * params.pageSize;
 
-  const rows = await prisma.$queryRaw<Array<RawRow & { total_count: number }>>`
-    SELECT ${productSelect}, COUNT(*) OVER ()::int AS total_count
-    ${productFrom}
-    WHERE ${productsWhere(organizationId, params)}
-    ORDER BY ${productsOrderBy(params)}
-    LIMIT ${params.pageSize} OFFSET ${offset}
-  `;
+  return withTenant(organizationId, async (db) => {
+    const rows = await db.$queryRaw<Array<RawRow & { total_count: number }>>`
+      SELECT ${productSelect}, COUNT(*) OVER ()::int AS total_count
+      ${productFrom}
+      WHERE ${productsWhere(organizationId, params)}
+      ORDER BY ${productsOrderBy(params)}
+      LIMIT ${params.pageSize} OFFSET ${offset}
+    `;
 
-  return {
-    rows: rows.map(toRow),
-    total: rows[0]?.total_count ?? 0,
-    page: params.page,
-    pageSize: params.pageSize,
-  };
+    return {
+      rows: rows.map(toRow),
+      total: rows[0]?.total_count ?? 0,
+      page: params.page,
+      pageSize: params.pageSize,
+    };
+  });
 }
 
 export async function exportProducts(
@@ -110,23 +112,27 @@ export async function exportProducts(
   params: ProductsParams,
   limit = 10_000,
 ): Promise<ProductListRow[]> {
-  const rows = await prisma.$queryRaw<RawRow[]>`
-    SELECT ${productSelect}
-    ${productFrom}
-    WHERE ${productsWhere(organizationId, params)}
-    ORDER BY ${productsOrderBy(params)}
-    LIMIT ${limit}
-  `;
+  return withTenant(organizationId, async (db) => {
+    const rows = await db.$queryRaw<RawRow[]>`
+      SELECT ${productSelect}
+      ${productFrom}
+      WHERE ${productsWhere(organizationId, params)}
+      ORDER BY ${productsOrderBy(params)}
+      LIMIT ${limit}
+    `;
 
-  return rows.map(toRow);
+    return rows.map(toRow);
+  });
 }
 
 export async function listCategories(
   organizationId: string,
 ): Promise<Array<{ id: string; name: string }>> {
-  return prisma.category.findMany({
-    where: { organizationId },
-    select: { id: true, name: true },
-    orderBy: { name: "asc" },
-  });
+  return withTenant(organizationId, (db) =>
+    db.category.findMany({
+      where: { organizationId },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+  );
 }

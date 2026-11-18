@@ -276,10 +276,43 @@ en `sessions.active_organization_id` (solo como pista para "continuar donde lo d
 | Guard de membresía | Acceso a organizaciones ajenas | Layout y cada acción |
 | Matriz de permisos | Escrituras fuera de rol | Servidor, antes de tocar datos |
 | Repositorios con `orgId` obligatorio | Olvido del filtro | Firmas de funciones |
-| RLS con `FORCE` | Fuga incluso con un `WHERE` olvidado | PostgreSQL (Fase 9) |
+| RLS con `FORCE` | Fuga incluso con un `WHERE` olvidado | PostgreSQL, siete tablas del plano de datos |
 
 `FORCE ROW LEVEL SECURITY` es clave: sin él, el dueño de la tabla (el rol de la aplicación en
-Neon) saltaría las políticas.
+Neon) saltaría las políticas. La aplicación fija el tenant dentro de la misma transacción que
+ejecuta la consulta:
+
+```ts
+// src/server/db/tenant.ts
+export async function withTenant(organizationId, run) {
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.current_organization_id', ${organizationId}, true)`;
+    return run(tx);
+  }, { maxWait: 5_000, timeout: 30_000 });
+}
+```
+
+`set_config(..., true)` es **local a la transacción**: una conexión del pool no puede arrastrar el
+tenant de una petición a la siguiente. Las políticas comparan `organization_id` con
+`current_setting('app.current_organization_id', true)`; si el ajuste no existe, la comparación es
+`NULL` y la consulta devuelve cero filas (falla cerrado).
+
+Tablas protegidas: `orders`, `order_items`, `customers`, `products`, `categories`, `traffic_daily`
+y `audit_logs`. Las tablas que resuelven el tenant **antes** de conocerlo (`users`, `organizations`,
+`memberships`, `invitations`, `sessions`, tokens de reset) quedan fuera de RLS por diseño: siempre
+se consultan por usuario o token, nunca por un `organization_id` que venga del cliente.
+
+El `postgres` local es superusuario y por tanto evita RLS en tiempo de ejecución. `npm run db:rls`
+crea un rol temporal sin superusuario, le concede `SELECT` y demuestra las políticas: el tenant A ve
+781 pedidos, el B 659, un predicado explícito contra el otro tenant devuelve 0 y sin ajuste también
+0. La suite E2E del demo se ejecutó además contra un login dedicado sin superusuario en una base
+recién migrada: todas las páginas, tablas, exportaciones y entradas de auditoría devolvieron las
+filas de su tenant. En Neon el rol de la aplicación es el dueño de las tablas, así que `FORCE` sí se
+aplica en cada request.
+
+Además, `audit_logs` es append-only en la base: un trigger `BEFORE UPDATE OR DELETE` lanza una
+excepción salvo que el seed active `app.allow_audit_maintenance` dentro de su propia transacción.
+Ningún camino de la aplicación activa ese flag.
 
 ### 4.3 Respuestas ante fallos
 
@@ -385,8 +418,27 @@ drift, y la extensión se crea en la migración inicial.
 - Comparación de periodos: dos rangos en la misma consulta mediante CTE, para que el KPI y su
   variación salgan de una sola pasada.
 
-El trabajo de medición (`EXPLAIN ANALYZE`, tiempos antes/después) se documenta en la Fase 9
-contra el dataset sembrado.
+### 6.4 Resultados medidos
+
+`npm run db:explain` ejecuta las formas de consulta del dashboard y de las tablas con
+`EXPLAIN (ANALYZE, BUFFERS)` contra el tenant Acme sembrado (781 pedidos, 68 clientes) y reporta
+tiempo, índices elegidos y escaneos secuenciales. Última ejecución local:
+
+| Consulta | Ejecución | Índices | Seq scans |
+| --- | ---: | --- | --- |
+| Totales del dashboard (ventana actual + anterior) | 1,14 ms | `orders_organization_id_placed_at_idx` | — |
+| Serie de ingresos (30 d, día) | 0,72 ms | `orders_organization_id_placed_at_idx` | — |
+| Página de pedidos (estado + fecha) | 1,33 ms | `orders_organization_id_status_placed_at_idx`, `customers_pkey` | — |
+| Búsqueda de pedidos (ILIKE) | 4,61 ms | `orders_organization_id_placed_at_idx`, `customers_pkey` | — |
+| Página de clientes (agregado de gasto) | 1,78 ms | — | `orders`, `customers` |
+| Filtro de auditoría por acción | 0,17 ms | — | `audit_logs` |
+
+Los escaneos secuenciales son honestos: 68 clientes y siete entradas de auditoría no justifican un
+index scan a ese tamaño. Los índices compuestos son los que mantienen la tabla `orders`, que sí
+crece, en planes de índice. Los índices GIN de trigramas están disponibles para búsquedas con
+comodín inicial; con 781 pedidos el planner sigue prefiriendo el índice de tenant. La Fase 9 añade
+además `audit_logs (organization_id, action, created_at DESC)` para el filtro por acción cuando el
+ledger crezca.
 
 ---
 
@@ -423,6 +475,17 @@ Sin proveedor de email, el enlace de reset se imprime en el log en desarrollo y,
 se devuelve a la UI **solo para cuentas `is_demo`**. Con `DEMO_READ_ONLY` no se emite token para la
 cuenta compartida. La respuesta a "he olvidado mi contraseña" es siempre la misma exista o no la
 cuenta.
+
+### 7.1 Cabeceras de seguridad
+
+Todas las respuestas salen con CSP (`default-src 'self'`, `frame-ancestors 'none'`, `object-src
+'none'`, `form-action 'self'`), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+`Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy` restrictiva,
+`Cross-Origin-Opener-Policy: same-origin` y `Cross-Origin-Resource-Policy: same-origin`. En
+producción se añaden HSTS (dos años, `includeSubDomains`, `preload`) y
+`upgrade-insecure-requests`; en desarrollo se conserva `'unsafe-eval'` para el HMR de Turbopack.
+`x-powered-by` está desactivado. El siguiente paso es una CSP con nonce en lugar de
+`'unsafe-inline'` para los scripts de arranque.
 
 ---
 
@@ -531,8 +594,9 @@ Lectura: requireOrgContext + can(role, "audit:read")
 - **Snapshots completos, no solo el delta.** Guardar `before` y `after` íntegros evita que un cambio
   de esquema reinterpretase el pasado; el diff se calcula al leer con `src/lib/diff.ts`, una función
   pura cubierta por tests. Las filas sin cambios no se muestran.
-- **Alcance de solo lectura.** No existe endpoint que actualice o borre `audit_logs`. El
-  endurecimiento de la Fase 9 puede añadir un rol de base de datos con solo `INSERT`/`SELECT`.
+- **Alcance de solo lectura.** No existe endpoint que actualice o borre `audit_logs`. La migración
+  de la Fase 9 añade un trigger `BEFORE UPDATE OR DELETE` que lanza `audit_logs is append-only`;
+  solo el seed activa `app.allow_audit_maintenance` dentro de su propia transacción.
 - **RBAC.** Solo Owner y Admin tienen `audit:read`: el ítem de navegación se oculta al resto, la URL
   directa muestra un panel restringido y `/api/org/[orgSlug]/audit` responde **403**.
 - **Contexto operativo.** Cada entrada conserva IP y user-agent además del actor, útil para
@@ -606,6 +670,9 @@ Petición de escritura
 | Diff calculado al leer | Diferencia precalculada | Una sola función pura, testeada; la UI no reinterpreta snapshots
 | Audit de solo lectura en la app | Edición administrativa | Un ledger que se puede editar no es un ledger
 | Guard de demo en Server Actions | Ocultar botones en React | La UI no es un límite de seguridad; el error vuelve del servidor
+| RLS con GUC transaccional | Filtrar solo en la aplicación | Una consulta sin `WHERE` devuelve cero filas, no las de otro tenant
+| `set_config(..., true)` | Ajuste de sesión en el pool | Evita que una conexión reutilizada herede el tenant anterior
+| Trigger append-only en `audit_logs` | Confiar solo en la aplicación | Ni un `DELETE` directo puede reescribir el ledger
 | Demo bloquea organización y cuenta | Solo `organizations.is_demo` | Evita que la cuenta compartida escriba en un workspace antiguo
 | Seed de demo idempotente | Datos generados al vuelo | El visitante ve SQL real y el reset restaura el mismo estado
 | Sin microfrontends | Varias apps | Un solo dominio, un solo deploy, un solo modelo de sesión |
@@ -624,7 +691,7 @@ Petición de escritura
 | 6 | Reportes CSV y PDF | ✅ |
 | 7 | Audit log con diffs | ✅ |
 | 8 | Seed de Acme y Nordwind + modo demo de solo lectura | ✅ |
-| 9 | RLS con `FORCE`, rendimiento, hardening | ⏳ |
+| 9 | RLS con `FORCE`, rendimiento medido y hardening | ✅ |
 | 10 | Tests, CI/CD, despliegue en Vercel + Neon | ⏳ |
 
 ---
@@ -639,3 +706,8 @@ Petición de escritura
 
 `src/server/db/client.ts` elige el adaptador según el host de `DATABASE_URL`
 (`*.neon.tech` → Neon) o la variable `DATABASE_DRIVER=neon`.
+
+Para que RLS se aplique, el rol de `DATABASE_URL` no puede ser `SUPERUSER` ni tener `BYPASSRLS`.
+El rol por defecto de Neon cumple; el `postgres` local es superusuario y por eso `npm run db:rls`
+verifica las políticas con un rol temporal sin privilegios. `FORCE ROW LEVEL SECURITY` cubre también
+al dueño de las tablas.

@@ -4,7 +4,7 @@
 
 Vortex Metrics gives every organization its own workspace, its own data and its own permissions. Dashboards, tables and exports are powered by real SQL aggregates over a seeded PostgreSQL dataset — no mocks at runtime, no client-side math.
 
-> **Status:** Phase 8 of 10 — seeded demo tenants and read-only demo mode.
+> **Status:** Phase 9 of 10 — RLS with FORCE, measured query plans and security headers.
 > See the [roadmap](#roadmap) for what ships next.
 
 ---
@@ -55,7 +55,7 @@ Next.js server
 PostgreSQL 16
   ├─ Composite indexes that always start with organization_id
   ├─ pg_trgm + GIN indexes for case-insensitive table search
-  └─ Row-Level Security with FORCE (Phase 9)
+  └─ Row-Level Security with FORCE on the tenant data plane
 ```
 
 Tenant scoping is **structural**, not conventional:
@@ -79,7 +79,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the ERD, RBAC matrix and 
 | 6 | CSV and PDF reports | ✅ |
 | 7 | Audit log with before/after diffs | ✅ |
 | 8 | Seeded demo tenants + read-only demo mode | ✅ |
-| 9 | Performance work, PostgreSQL RLS with FORCE, security hardening | ⏳ |
+| 9 | Performance work, PostgreSQL RLS with FORCE, security hardening | ✅ |
 | 10 | Tests, CI/CD, Vercel + Neon deployment, docs | ⏳ |
 
 ## Local development
@@ -165,6 +165,8 @@ Open [http://localhost:3000](http://localhost:3000).
 | `npm run db:deploy` | Apply pending migrations (CI / production) |
 | `npm run db:reset` | Drop, re-migrate, regenerate and reseed |
 | `npm run db:seed` | Seed the demo tenants, or one workspace with `-- --org <slug>` / `-- --email <address>` |
+| `npm run db:rls` | Prove the RLS policies with a temporary non-superuser role |
+| `npm run db:explain` | Print `EXPLAIN ANALYZE` plans for the dashboard and table queries |
 | `npm run db:studio` | Prisma Studio |
 | `npm run db:check` | Verify connectivity, tables and trigram indexes |
 
@@ -176,7 +178,9 @@ prisma/
   migrations/             SQL migrations, including pg_trgm indexes
   seed.ts                 Demo tenants, editable workspace seed, audit fixtures
 scripts/
-  db-check.ts             Connectivity + index smoke test
+  db-check.ts             Connectivity + table, index, RLS and policy smoke test
+  rls-check.ts            Proves tenant policies with a temporary non-superuser role
+  explain.ts              EXPLAIN ANALYZE report for the dashboard and table queries
 src/
   app/
     (auth)/               login, register, forgot-password, reset-password, invite/[token]
@@ -207,6 +211,7 @@ src/
     auth/                 Password hashing, sessions, rate limits, Server Actions
     customers/            Customer list query
     db/client.ts          Prisma client with pg / Neon adapters
+    db/tenant.ts          Transaction-scoped RLS context (`withTenant`)
     email/                Resend delivery (optional)
     exports/              CSV/PDF HTTP helpers and the printed report
     orders/               Order list and detail queries
@@ -303,6 +308,60 @@ The resolved context (`{ viewer, organization, membership.role }`) is memoised p
 `cache`, so the layout, the page and any action share one query. The client never posts an `orgId`.
 The switcher posts a **slug**, and the server re-checks the membership before remembering it on the
 session as a convenience hint for "continue where you left off".
+
+### Row-Level Security, as a second fence
+
+Application scoping is the first fence; PostgreSQL RLS is the second. Every tenant read or write
+runs through `withTenant(orgId, fn)`, which opens a transaction, sets
+`app.current_organization_id` with `set_config(..., true)` and hands the transaction client to the
+query. The setting is transaction-local, so a pooled connection cannot leak a tenant into the next
+request.
+
+The policies cover the data plane — `orders`, `order_items`, `customers`, `products`, `categories`,
+`traffic_daily` and `audit_logs` — with `ENABLE` and `FORCE ROW LEVEL SECURITY`. A missing tenant
+setting fails closed: the policy comparison is `NULL`, so the query sees zero rows. The tables that
+must resolve the tenant before it is known (`users`, `organizations`, `memberships`, `invitations`,
+`sessions`, reset tokens) stay outside RLS by design and are always queried by user or token, never
+by a client-supplied organization id.
+
+`FORCE` matters because the table owner would otherwise bypass its own policies. The local
+`postgres` connection is a superuser and therefore bypasses RLS at runtime; `npm run db:rls` proves
+the policies with a temporary non-superuser role: tenant A sees 781 orders, tenant B 659, an explicit
+cross-tenant predicate returns zero and no setting returns zero. The full demo E2E was also run
+against a dedicated non-superuser login on a fresh database: every page, table, export and audit
+entry returned its tenant's rows.
+
+`audit_logs` is also append-only at the database level: a `BEFORE UPDATE OR DELETE` trigger raises
+unless the seed's explicit `app.allow_audit_maintenance` flag is set inside its own transaction.
+
+### Performance, measured
+
+`npm run db:explain` runs the dashboard and table query shapes with `EXPLAIN (ANALYZE, BUFFERS)` on
+the seeded Acme tenant and reports execution time, chosen indexes and sequential scans. The latest
+run on the local dataset:
+
+| Query | Execution | Indexes | Seq scans |
+| --- | --- | --- | --- |
+| Dashboard totals (current + previous) | 1.14 ms | `orders_organization_id_placed_at_idx` | none |
+| Revenue series (30d, day) | 0.72 ms | `orders_organization_id_placed_at_idx` | none |
+| Orders page (status + date) | 1.33 ms | `orders_organization_id_status_placed_at_idx`, `customers_pkey` | none |
+| Orders search (ILIKE) | 4.61 ms | `orders_organization_id_placed_at_idx`, `customers_pkey` | none |
+| Customers page (spend aggregate) | 1.78 ms | — | `orders`, `customers` |
+| Audit action filter | 0.17 ms | — | `audit_logs` |
+
+The sequential scans are honest: 68 customers and seven audit rows do not justify an index scan at
+this size. The composite indexes are what keep the growing `orders` table on index plans. The
+trigram GIN indexes are available for leading-wildcard search; at 781 orders the planner still
+prefers the tenant index. Phase 9 also adds `audit_logs (organization_id, action, created_at DESC)`
+for the action filter once the ledger grows.
+
+### Security headers
+
+Every response carries a CSP (`default-src 'self'`, no external sources, `frame-ancestors 'none'`,
+`object-src 'none'`, `form-action 'self'`), `X-Content-Type-Options`, `X-Frame-Options: DENY`,
+`Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy` and
+`Cross-Origin-Resource-Policy`. Production adds HSTS and `upgrade-insecure-requests`; development
+keeps `'unsafe-eval'` for Turbopack HMR. `x-powered-by` is disabled.
 
 ### Roles are one matrix, used twice
 
@@ -437,6 +496,11 @@ The target platform is **Vercel + Neon Postgres**:
 - `DIRECT_URL` → direct connection (used by Prisma migrations)
 - `NEXT_PUBLIC_APP_URL` → public base URL
 - Optional: `RESEND_API_KEY`, `EMAIL_FROM`, `CRON_SECRET`, `DEMO_MODE`, `DEMO_READ_ONLY`
+
+`DATABASE_URL` must use a role without `SUPERUSER` or `BYPASSRLS` for RLS to apply; Neon's default
+role qualifies. The local `postgres` superuser bypasses RLS, which is why `npm run db:rls` proves the
+policies through a temporary non-superuser role. The table owner is still covered because the
+policies use `FORCE`.
 
 For a public preview, run `npm run db:seed` with `DATABASE_URL` pointed at the production
 database, then set both demo flags to `true`. The seed is idempotent, so the same command restores

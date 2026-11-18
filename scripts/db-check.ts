@@ -19,9 +19,33 @@ async function main() {
     ORDER BY indexname
   `;
 
+  const rlsTables = await prisma.$queryRaw<
+    Array<{ relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }>
+  >`
+    SELECT relname, relrowsecurity, relforcerowsecurity
+    FROM pg_class
+    WHERE relnamespace = 'public'::regnamespace
+      AND relkind = 'r'
+      AND relrowsecurity
+    ORDER BY relname
+  `;
+
+  const policies = await prisma.$queryRaw<Array<{ tablename: string; policyname: string }>>`
+    SELECT tablename, policyname
+    FROM pg_policies
+    WHERE schemaname = 'public'
+    ORDER BY tablename, policyname
+  `;
+
   console.log(`Connected to: ${version?.version.split(",")[0] ?? "unknown"}`);
   console.log(`Tables (${tables.length}): ${tables.map((row) => row.table_name).join(", ")}`);
   console.log(`Trigram indexes (${trigramIndexes.length}): ${trigramIndexes.map((row) => row.indexname).join(", ")}`);
+  console.log(
+    `RLS (${rlsTables.length}, forced: ${rlsTables.filter((row) => row.relforcerowsecurity).length}): ${rlsTables
+      .map((row) => row.relname)
+      .join(", ")}`,
+  );
+  console.log(`Policies (${policies.length}): ${policies.map((row) => `${row.tablename}.${row.policyname}`).join(", ")}`);
 }
 
 main()

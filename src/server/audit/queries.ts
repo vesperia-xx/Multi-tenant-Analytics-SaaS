@@ -3,7 +3,7 @@ import "server-only";
 import { Prisma } from "@/generated/prisma/client";
 import type { ListResult } from "@/lib/validation/table";
 import type { AuditParams } from "@/lib/validation/audit";
-import { prisma } from "@/server/db/client";
+import { withTenant } from "@/server/db/tenant";
 
 export type AuditListRow = {
   id: string;
@@ -91,54 +91,60 @@ export async function listAuditLogs(
   const order = params.direction === "asc" ? "ASC" : "DESC";
   const offset = (params.page - 1) * params.pageSize;
 
-  const rows = await prisma.$queryRaw<Array<RawRow & { total_count: number }>>`
-    SELECT ${auditSelect}, COUNT(*) OVER ()::int AS total_count
-    FROM audit_logs a
-    LEFT JOIN users u ON u.id = a.actor_id
-    WHERE ${auditWhere(organizationId, timezone, params)}
-    ORDER BY a.created_at ${Prisma.raw(order)}, a.id ASC
-    LIMIT ${params.pageSize} OFFSET ${offset}
-  `;
+  return withTenant(organizationId, async (db) => {
+    const rows = await db.$queryRaw<Array<RawRow & { total_count: number }>>`
+      SELECT ${auditSelect}, COUNT(*) OVER ()::int AS total_count
+      FROM audit_logs a
+      LEFT JOIN users u ON u.id = a.actor_id
+      WHERE ${auditWhere(organizationId, timezone, params)}
+      ORDER BY a.created_at ${Prisma.raw(order)}, a.id ASC
+      LIMIT ${params.pageSize} OFFSET ${offset}
+    `;
 
-  return {
-    rows: rows.map(toRow),
-    total: rows[0]?.total_count ?? 0,
-    page: params.page,
-    pageSize: params.pageSize,
-  };
+    return {
+      rows: rows.map(toRow),
+      total: rows[0]?.total_count ?? 0,
+      page: params.page,
+      pageSize: params.pageSize,
+    };
+  });
 }
 
 export async function getAuditLog(
   organizationId: string,
   id: string,
 ): Promise<AuditDetail | null> {
-  const [row] = await prisma.$queryRaw<
-    Array<RawRow & { user_agent: string | null; before: Prisma.JsonValue | null; after: Prisma.JsonValue | null }>
-  >`
-    SELECT ${auditSelect}, a.user_agent, a.before, a.after
-    FROM audit_logs a
-    LEFT JOIN users u ON u.id = a.actor_id
-    WHERE a.organization_id = ${organizationId} AND a.id = ${id}
-    LIMIT 1
-  `;
+  return withTenant(organizationId, async (db) => {
+    const [row] = await db.$queryRaw<
+      Array<RawRow & { user_agent: string | null; before: Prisma.JsonValue | null; after: Prisma.JsonValue | null }>
+    >`
+      SELECT ${auditSelect}, a.user_agent, a.before, a.after
+      FROM audit_logs a
+      LEFT JOIN users u ON u.id = a.actor_id
+      WHERE a.organization_id = ${organizationId} AND a.id = ${id}
+      LIMIT 1
+    `;
 
-  if (!row) return null;
+    if (!row) return null;
 
-  return {
-    ...toRow(row),
-    userAgent: row.user_agent,
-    before: row.before,
-    after: row.after,
-  };
+    return {
+      ...toRow(row),
+      userAgent: row.user_agent,
+      before: row.before,
+      after: row.after,
+    };
+  });
 }
 
 export async function listAuditActions(organizationId: string): Promise<string[]> {
-  const rows = await prisma.auditLog.findMany({
-    where: { organizationId },
-    select: { action: true },
-    distinct: ["action"],
-    orderBy: { action: "asc" },
-  });
+  return withTenant(organizationId, async (db) => {
+    const rows = await db.auditLog.findMany({
+      where: { organizationId },
+      select: { action: true },
+      distinct: ["action"],
+      orderBy: { action: "asc" },
+    });
 
-  return rows.map((row) => row.action);
+    return rows.map((row) => row.action);
+  });
 }
